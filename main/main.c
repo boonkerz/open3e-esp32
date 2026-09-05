@@ -27,6 +27,7 @@
 #include "o3e_db.h"
 #include "ota.h"
 #include "poller.h"
+#include "raw_relay.h"
 
 static const char *TAG = "main";
 
@@ -122,6 +123,13 @@ void app_main(void)
             size_t n = collect_parse_ids(sys.collect_canids, ids, COLLECT_MAX_IDS);
             if (n) {
                 collect_start(ids, n);
+            }
+        }
+        if (sys.raw_canids[0]) {
+            uint16_t ids[RAW_RELAY_MAX_IDS];
+            size_t n = collect_parse_ids(sys.raw_canids, ids, RAW_RELAY_MAX_IDS);
+            if (n) {
+                raw_relay_start(ids, n);
             }
         }
     }

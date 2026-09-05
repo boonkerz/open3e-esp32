@@ -106,6 +106,18 @@ typedef bool (*can_listen_cb_t)(uint32_t id, const uint8_t *data, uint8_t len);
 #define CAN_MAX_LISTENERS 4
 
 bool can_port_add_listener(uint32_t first, uint32_t last, can_listen_cb_t cb);
+
+/* Like can_port_add_listener(), but only frames whose ID is actually one of
+ * `ids` are routed to `cb` -- unlike a plain [first, last] range, other
+ * traffic in the gaps between scattered IDs still reaches the normal ISO-TP
+ * path instead of being silently swallowed. Needed once the configured IDs
+ * can be far apart and are not known in advance to avoid straddling an ECU's
+ * own request/response addresses (see raw_relay.c, whose whole point is
+ * relaying whatever IDs a caller asks for). */
+#define CAN_LISTENER_MAX_IDS 32
+
+bool can_port_add_id_listener(const uint16_t *ids, size_t n_ids, can_listen_cb_t cb);
+
 void can_port_remove_listener(can_listen_cb_t cb);
 
 #endif /* O3E_CAN_PORT_H */

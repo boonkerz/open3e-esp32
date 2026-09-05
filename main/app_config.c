@@ -248,10 +248,12 @@ void sys_cfg_get(sys_cfg_t *out)
         return;
     }
     out->write_enabled = nvs_get_u8_or(h, "wr_on", 0) != 0;
+    out->raw_write_enabled = nvs_get_u8_or(h, "raw_wr_on", 0) != 0;
     out->em380_enabled = nvs_get_u8_or(h, "em380_on", 0) != 0;
     out->collect_enabled = nvs_get_u8_or(h, "coll_on", 0) != 0;
     nvs_get_str_or(h, "coll_ids", out->collect_canids, sizeof(out->collect_canids),
                    "0x451,0x441");
+    nvs_get_str_or(h, "raw_ids", out->raw_canids, sizeof(out->raw_canids), "");
     nvs_get_str_or(h, "tz", out->tz, sizeof(out->tz), tz_default);
     out->grid_ecu = (uint16_t)nvs_get_u16_or(h, "grid_ecu", 0);
     out->grid_watts = (uint16_t)nvs_get_u16_or(h, "grid_w", 2000);
@@ -266,10 +268,12 @@ bool sys_cfg_set(const sys_cfg_t *in)
         return false;
     }
     nvs_set_u8(h, "wr_on", in->write_enabled ? 1 : 0);
+    nvs_set_u8(h, "raw_wr_on", in->raw_write_enabled ? 1 : 0);
     nvs_set_u8(h, "em380_on", in->em380_enabled ? 1 : 0);
     nvs_set_u8(h, "coll_on", in->collect_enabled ? 1 : 0);
     nvs_set_str(h, "coll_ids",
                 in->collect_canids[0] ? in->collect_canids : "0x451,0x441");
+    nvs_set_str(h, "raw_ids", in->raw_canids);
     nvs_set_str(h, "tz", in->tz);
     nvs_set_u16(h, "grid_ecu", in->grid_ecu);
     nvs_set_u16(h, "grid_w", in->grid_watts ? in->grid_watts : 2000);

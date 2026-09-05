@@ -1,7 +1,9 @@
 #include "httpd_api.h"
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <strings.h>
 #include <time.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -32,6 +34,7 @@
 #include "o3e_json.h"
 #include "ota.h"
 #include "poller.h"
+#include "raw_relay.h"
 #include "sysinfo.h"
 
 static const char *TAG = "http";
@@ -64,6 +67,11 @@ static void restart_soon(uint32_t delay_ms)
 }
 
 #define MAX_BODY 16384
+
+/* Bumped whenever /api/rawread or /api/rawwrite's request/response shape
+ * changes, so a caller can tell a firmware too old to have them apart from
+ * one that simply answered "no" (see docs/raw-gateway-api.md upstream). */
+#define RAW_API_VERSION 1
 
 /* ------------------------------------------------------------------ */
 /* helpers                                                              */
@@ -202,6 +210,36 @@ static bool query_u16(httpd_req_t *r, const char *key, uint16_t *out)
     return true;
 }
 
+static bool query_str(httpd_req_t *r, const char *key, char *out, size_t out_sz)
+{
+    char q[128];
+    if (httpd_req_get_url_query_str(r, q, sizeof(q)) != ESP_OK) {
+        return false;
+    }
+    return httpd_query_key_value(q, key, out, out_sz) == ESP_OK;
+}
+
+/* Parse a hex string (upper- or lowercase) into bytes. False on an odd
+ * length, a non-hex digit, or more bytes than `cap` holds -- `*out_len` is
+ * only meaningful when this returns true. */
+static bool hex_to_bytes(const char *hex, uint8_t *out, size_t cap, size_t *out_len)
+{
+    size_t hexlen = strlen(hex);
+    if (hexlen % 2 != 0 || hexlen / 2 > cap) {
+        return false;
+    }
+    for (size_t i = 0; i < hexlen / 2; i++) {
+        char hi = hex[i * 2], lo = hex[i * 2 + 1];
+        if (!isxdigit((unsigned char)hi) || !isxdigit((unsigned char)lo)) {
+            return false;
+        }
+        char byte_str[3] = { hi, lo, '\0' };
+        out[i] = (uint8_t)strtol(byte_str, NULL, 16);
+    }
+    *out_len = hexlen / 2;
+    return true;
+}
+
 /* ------------------------------------------------------------------ */
 /* status                                                               */
 
@@ -260,6 +298,7 @@ static esp_err_t h_status(httpd_req_t *r)
              "\"dbVersion\": \"%s\", \"dbLoaded\": %s, \"dbCount\": %u, "
              "\"uptimeS\": %llu, "
              "\"heapFree\": %u, \"heapMin\": %u, \"writeEnabled\": %s, "
+             "\"rawWriteEnabled\": %s, \"rawApiVersion\": %u, "
              "\"partition\": \"%s\", \"pendingVerify\": %s, "
              "\"clock\": \"%s\", \"clockValid\": %s, ",
              app->version, app->date, app->time, elf_sha, app->idf_ver,
@@ -269,6 +308,7 @@ static esp_err_t h_status(httpd_req_t *r)
              (unsigned)esp_get_free_heap_size(),
              (unsigned)esp_get_minimum_free_heap_size(),
              sys.write_enabled ? "true" : "false",
+             sys.raw_write_enabled ? "true" : "false", RAW_API_VERSION,
              ota.running, ota.pending_verify ? "true" : "false",
              clock_str, net_time_valid() ? "true" : "false");
     o3e_buf_adds(&b, t);
@@ -928,6 +968,126 @@ static esp_err_t h_write(httpd_req_t *r)
 }
 
 /* ------------------------------------------------------------------ */
+/* raw read / write                                                     */
+/*
+ * The counterparts to h_read()/h_write() above that skip the open3e codec
+ * entirely -- see docs/raw-gateway-api.md. Deliberately calling can_read_did()
+ * /can_write_did() directly rather than going through poller_read_now()/
+ * poller_write_now(): those also enforce "DID known to our database" and
+ * "marked rw in our database", which is exactly the coupling a caller with
+ * its own datapoint definitions (e.g. ioBroker.e3oncan) needs to not have.
+ */
+
+#define RAWREAD_MAX_BATCH 10
+
+static esp_err_t h_rawread(httpd_req_t *r)
+{
+    char ecu_str[16], did_str[128];
+    if (!query_str(r, "ecu", ecu_str, sizeof(ecu_str)) ||
+        !query_str(r, "did", did_str, sizeof(did_str))) {
+        return send_err(r, 400, "ecu and did parameters are required");
+    }
+    uint16_t ecu = (uint16_t)strtol(ecu_str, NULL, 0);
+
+    uint8_t *buf = malloc(ISOTP_MAX_PAYLOAD);
+    if (!buf) {
+        return send_err(r, 500, "out of memory");
+    }
+
+    o3e_buf_t b;
+    o3e_buf_init(&b);
+    char t[32];
+    snprintf(t, sizeof(t), "0x%03x", ecu);
+    o3e_buf_adds(&b, "{\"ecu\": ");
+    o3e_buf_add_json_str(&b, t);
+    o3e_buf_adds(&b, ", \"results\": [");
+
+    int count = 0;
+    char *save = NULL;
+    for (char *tok = strtok_r(did_str, ",", &save); tok && count < RAWREAD_MAX_BATCH;
+         tok = strtok_r(NULL, ",", &save), count++) {
+        uint16_t did = (uint16_t)strtol(tok, NULL, 0);
+        size_t n = 0;
+        uds_result_t res = can_read_did(ecu, did, buf, ISOTP_MAX_PAYLOAD, &n, UDS_P2_MS);
+
+        snprintf(t, sizeof(t), "%u", did);
+        o3e_buf_adds(&b, count ? ", {\"did\": " : "{\"did\": ");
+        o3e_buf_adds(&b, t);
+        if (res.err == UDS_OK) {
+            o3e_buf_adds(&b, ", \"data\": \"");
+            for (size_t i = 0; i < n; i++) {
+                char hx[3];
+                snprintf(hx, sizeof(hx), "%02x", buf[i]);
+                o3e_buf_adds(&b, hx);
+            }
+            snprintf(t, sizeof(t), "\", \"len\": %u}", (unsigned)n);
+            o3e_buf_adds(&b, t);
+        } else {
+            o3e_buf_adds(&b, ", \"error\": ");
+            o3e_buf_add_json_str(&b, uds_strerror(res));
+            o3e_buf_addc(&b, '}');
+        }
+    }
+    free(buf);
+    o3e_buf_adds(&b, "]}");
+
+    esp_err_t e = send_json(r, b.buf ? b.buf : "{}");
+    o3e_buf_free(&b);
+    return e;
+}
+
+static esp_err_t h_rawwrite(httpd_req_t *r)
+{
+    sys_cfg_t sys;
+    sys_cfg_get(&sys);
+    if (!sys.raw_write_enabled) {
+        return send_err(r, 403, "raw writing is disabled in the system settings");
+    }
+
+    char *body = read_body(r);
+    if (!body) {
+        return ESP_OK;
+    }
+    cJSON *j = cJSON_Parse(body);
+    free(body);
+    if (!j) {
+        return send_err(r, 400, "not valid JSON");
+    }
+    const cJSON *jecu = cJSON_GetObjectItem(j, "ecu");
+    const cJSON *jdid = cJSON_GetObjectItem(j, "did");
+    const cJSON *jsvc = cJSON_GetObjectItem(j, "svc");
+    const cJSON *jdata = cJSON_GetObjectItem(j, "data");
+    if ((!cJSON_IsNumber(jecu) && !cJSON_IsString(jecu)) || !cJSON_IsNumber(jdid) ||
+        !cJSON_IsString(jsvc) || !cJSON_IsString(jdata)) {
+        cJSON_Delete(j);
+        return send_err(r, 400, "ecu, did, svc and data are required");
+    }
+    /* Service 0x77 is deliberately not implemented -- see uds.h. */
+    if (strcasecmp(jsvc->valuestring, "0x2E") != 0) {
+        cJSON_Delete(j);
+        return send_err(r, 400, "svc must be \"0x2E\" (0x77 is not supported yet)");
+    }
+    uint16_t ecu = cJSON_IsNumber(jecu) ? (uint16_t)jecu->valuedouble
+                                        : (uint16_t)strtol(jecu->valuestring, NULL, 0);
+    uint16_t did = (uint16_t)jdid->valuedouble;
+
+    uint8_t payload[UDS_MAX_WRITE];
+    size_t len = 0;
+    bool parsed = hex_to_bytes(jdata->valuestring, payload, sizeof(payload), &len);
+    cJSON_Delete(j);
+    if (!parsed) {
+        return send_err(r, 400, "data must be an even-length hex string");
+    }
+
+    uds_result_t res = can_write_did(ecu, did, payload, len, UDS_P2_MS);
+    if (res.err != UDS_OK) {
+        return send_err(r, 400, uds_strerror(res));
+    }
+    ESP_LOGI(TAG, "raw wrote 0x%03X.%u (%u bytes)", ecu, did, (unsigned)len);
+    return send_json(r, "{\"ok\": true}");
+}
+
+/* ------------------------------------------------------------------ */
 /* CAN trace                                                             */
 
 static esp_err_t h_trace_ctl(httpd_req_t *r)
@@ -1197,12 +1357,16 @@ static esp_err_t h_export(httpd_req_t *r)
 
     o3e_buf_adds(&b, "}, \"system\": {\"writeEnabled\": ");
     o3e_buf_adds(&b, sys.write_enabled ? "true" : "false");
+    o3e_buf_adds(&b, ", \"rawWriteEnabled\": ");
+    o3e_buf_adds(&b, sys.raw_write_enabled ? "true" : "false");
     o3e_buf_adds(&b, ", \"em380Enabled\": ");
     o3e_buf_adds(&b, sys.em380_enabled ? "true" : "false");
     o3e_buf_adds(&b, ", \"collectEnabled\": ");
     o3e_buf_adds(&b, sys.collect_enabled ? "true" : "false");
     o3e_buf_adds(&b, ", \"collectCanIds\": ");
     o3e_buf_add_json_str(&b, sys.collect_canids);
+    o3e_buf_adds(&b, ", \"rawCanIds\": ");
+    o3e_buf_add_json_str(&b, sys.raw_canids);
     o3e_buf_adds(&b, ", \"tz\": ");
     o3e_buf_add_json_str(&b, sys.tz);
     o3e_buf_adds(&b, "}, \"points\": ");
@@ -1350,6 +1514,9 @@ static bool import_apply(const cJSON *root, char *err, size_t err_sz)
         if (cJSON_IsBool(v = cJSON_GetObjectItem(js, "writeEnabled"))) {
             sc.write_enabled = cJSON_IsTrue(v);
         }
+        if (cJSON_IsBool(v = cJSON_GetObjectItem(js, "rawWriteEnabled"))) {
+            sc.raw_write_enabled = cJSON_IsTrue(v);
+        }
         if (cJSON_IsBool(v = cJSON_GetObjectItem(js, "em380Enabled"))) {
             sc.em380_enabled = cJSON_IsTrue(v);
         }
@@ -1413,12 +1580,16 @@ static esp_err_t h_settings_get(httpd_req_t *r)
 
     o3e_buf_adds(&b, "}, \"system\": {\"writeEnabled\": ");
     o3e_buf_adds(&b, sys.write_enabled ? "true" : "false");
+    o3e_buf_adds(&b, ", \"rawWriteEnabled\": ");
+    o3e_buf_adds(&b, sys.raw_write_enabled ? "true" : "false");
     o3e_buf_adds(&b, ", \"em380Enabled\": ");
     o3e_buf_adds(&b, sys.em380_enabled ? "true" : "false");
     o3e_buf_adds(&b, ", \"collectEnabled\": ");
     o3e_buf_adds(&b, sys.collect_enabled ? "true" : "false");
     o3e_buf_adds(&b, ", \"collectCanIds\": ");
     o3e_buf_add_json_str(&b, sys.collect_canids);
+    o3e_buf_adds(&b, ", \"rawCanIds\": ");
+    o3e_buf_add_json_str(&b, sys.raw_canids);
     o3e_buf_adds(&b, ", \"tz\": ");
     o3e_buf_add_json_str(&b, sys.tz);
     o3e_buf_adds(&b, ", \"hostname\": ");
@@ -1488,6 +1659,9 @@ static esp_err_t h_settings_put(httpd_req_t *r)
         if (cJSON_IsBool(v = cJSON_GetObjectItem(js, "writeEnabled"))) {
             sys.write_enabled = cJSON_IsTrue(v);
         }
+        if (cJSON_IsBool(v = cJSON_GetObjectItem(js, "rawWriteEnabled"))) {
+            sys.raw_write_enabled = cJSON_IsTrue(v);
+        }
         bool em_was = sys.em380_enabled;
         if (cJSON_IsBool(v = cJSON_GetObjectItem(js, "em380Enabled"))) {
             sys.em380_enabled = cJSON_IsTrue(v);
@@ -1499,6 +1673,9 @@ static esp_err_t h_settings_put(httpd_req_t *r)
             sys.collect_enabled = cJSON_IsTrue(v);
         }
         copy_str(js, "collectCanIds", sys.collect_canids, sizeof(sys.collect_canids));
+        char raw_ids_was[CFG_RAW_IDS_MAX];
+        snprintf(raw_ids_was, sizeof(raw_ids_was), "%s", sys.raw_canids);
+        copy_str(js, "rawCanIds", sys.raw_canids, sizeof(sys.raw_canids));
         copy_str(js, "tz", sys.tz, sizeof(sys.tz));
         sys_cfg_set(&sys);
         /* Takes effect immediately: enabling only installs a receive filter. */
@@ -1517,6 +1694,16 @@ static esp_err_t h_settings_put(httpd_req_t *r)
                 size_t n = collect_parse_ids(sys.collect_canids, ids, COLLECT_MAX_IDS);
                 if (n) {
                     collect_start(ids, n);
+                }
+            }
+        }
+        if (strcmp(raw_ids_was, sys.raw_canids) != 0) {
+            raw_relay_stop();
+            if (sys.raw_canids[0]) {
+                uint16_t ids[RAW_RELAY_MAX_IDS];
+                size_t n = collect_parse_ids(sys.raw_canids, ids, RAW_RELAY_MAX_IDS);
+                if (n) {
+                    raw_relay_start(ids, n);
                 }
             }
         }
@@ -1821,6 +2008,8 @@ static const httpd_uri_t routes[] = {
     { "/api/grid",        HTTP_POST, h_grid,         NULL },
     { "/api/crash",       HTTP_GET,  h_crash,        NULL },
     { "/api/crash",       HTTP_DELETE, h_crash,      NULL },
+    { "/api/rawread",     HTTP_GET,  h_rawread,      NULL },
+    { "/api/rawwrite",    HTTP_POST, h_rawwrite,     NULL },
     { "/api/trace",       HTTP_POST, h_trace_ctl,    NULL },
     { "/api/trace",       HTTP_GET,  h_trace_status, NULL },
     { "/api/trace/frames", HTTP_GET, h_trace_frames, NULL },

@@ -52,6 +52,13 @@ typedef struct {
     volatile can_listen_cb_t cb;
     volatile uint32_t        first;
     volatile uint32_t        last;
+    /* n_ids == 0 (the default, set by can_port_add_listener()) preserves the
+     * original behavior: every frame in [first, last] goes to cb. When
+     * can_port_add_id_listener() set n_ids > 0, only frames whose ID is
+     * actually in ids[] do - anything else in [first, last] falls through to
+     * the ISO-TP queue below instead. */
+    uint16_t                 ids[CAN_LISTENER_MAX_IDS];
+    volatile uint8_t         n_ids;
 } listener_t;
 
 static listener_t listeners[CAN_MAX_LISTENERS];
@@ -154,27 +161,54 @@ static bool IRAM_ATTR on_rx_done(twai_node_handle_t handle,
         return false;
     }
 
-    /* Broadcast frames are handed straight to the listener. Putting them in
-     * the ISO-TP queue instead would both confuse an exchange in progress and
-     * lose them to the next flush_rx(). */
+    /* Broadcast frames are handed straight to every listener that wants them
+     * rather than to the ISO-TP queue - putting them there instead would both
+     * confuse an exchange in progress and lose them to the next flush_rx().
+     *
+     * Every matching listener is called, not just the first: a raw relay
+     * (see raw_relay.c) may be asked for the very same IDs em380.c or
+     * collect.c already own, because it exists precisely to hand a caller
+     * the bytes those already decode for this firmware's own use. Nothing
+     * before this had two listeners wanting the same ID at once, so this
+     * used to return on the first match; that was never a promise "only one
+     * listener will see this frame", just what happened to always be true. */
+    bool matched = false;
+    BaseType_t woken = pdFALSE;
     for (int i = 0; i < CAN_MAX_LISTENERS; i++) {
         can_listen_cb_t cb = listeners[i].cb;
-        if (cb && frame.header.id >= listeners[i].first &&
-            frame.header.id <= listeners[i].last) {
-            /* The listener's wakeup request is handed back to the driver
-             * rather than acted on here. */
-            return cb(frame.header.id, buf, dlc);
+        if (!cb || frame.header.id < listeners[i].first ||
+            frame.header.id > listeners[i].last) {
+            continue;
         }
+        if (listeners[i].n_ids > 0) {
+            bool in_ids = false;
+            for (uint8_t k = 0; k < listeners[i].n_ids; k++) {
+                if (listeners[i].ids[k] == frame.header.id) {
+                    in_ids = true;
+                    break;
+                }
+            }
+            if (!in_ids) {
+                continue;
+            }
+        }
+        matched = true;
+        if (cb(frame.header.id, buf, dlc)) {
+            woken = pdTRUE;
+        }
+    }
+    if (matched) {
+        return woken == pdTRUE;
     }
 
     rx_frame_t f = { .id = frame.header.id, .len = dlc };
     memcpy(f.data, buf, f.len);
 
-    BaseType_t woken = pdFALSE;
-    if (xQueueSendFromISR(rx_q, &f, &woken) != pdTRUE) {
+    BaseType_t rx_woken = pdFALSE;
+    if (xQueueSendFromISR(rx_q, &f, &rx_woken) != pdTRUE) {
         stats.rx_missed++;
     }
-    return woken == pdTRUE;
+    return rx_woken == pdTRUE;
 }
 
 /* A wiring fault or a wrong bitrate drives the controller bus-off. Recovery
@@ -467,6 +501,40 @@ bool can_port_add_listener(uint32_t first, uint32_t last, can_listen_cb_t cb)
             listeners[i].cb = NULL;
             listeners[i].first = first;
             listeners[i].last = last;
+            listeners[i].n_ids = 0;
+            listeners[i].cb = cb;
+            return true;
+        }
+    }
+    ESP_LOGW(TAG, "no free listener slot");
+    return false;
+}
+
+bool can_port_add_id_listener(const uint16_t *ids, size_t n_ids, can_listen_cb_t cb)
+{
+    if (!cb || n_ids == 0 || n_ids > CAN_LISTENER_MAX_IDS) {
+        return false;
+    }
+    uint32_t lo = ids[0], hi = ids[0];
+    for (size_t i = 1; i < n_ids; i++) {
+        if (ids[i] < lo) {
+            lo = ids[i];
+        }
+        if (ids[i] > hi) {
+            hi = ids[i];
+        }
+    }
+    for (int i = 0; i < CAN_MAX_LISTENERS; i++) {
+        if (listeners[i].cb == cb || !listeners[i].cb) {
+            /* Same disarm-update-arm order as can_port_add_listener(): the
+             * ISR must never see n_ids/ids paired with a stale cb or range. */
+            listeners[i].cb = NULL;
+            listeners[i].first = lo;
+            listeners[i].last = hi;
+            for (size_t k = 0; k < n_ids; k++) {
+                listeners[i].ids[k] = ids[k];
+            }
+            listeners[i].n_ids = (uint8_t)n_ids;
             listeners[i].cb = cb;
             return true;
         }
@@ -482,6 +550,7 @@ void can_port_remove_listener(can_listen_cb_t cb)
             listeners[i].cb = NULL;
             listeners[i].first = 1;
             listeners[i].last = 0;
+            listeners[i].n_ids = 0;
         }
     }
 }

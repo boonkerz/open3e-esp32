@@ -349,10 +349,12 @@ Auf `open3e/cmnd` (einstellbar) wird das Schema von open3es Listener akzeptiert:
 ```
 
 Antworten von `read` landen auf demselben Topic wie eine planmäßige Abfrage,
-Fehler auf `open3e/ERR`. Die Raw-Modi von open3e sind bewusst nicht
-implementiert — der Sinn dieses Gateways ist die dekodierte Sicht, und ein
-Raw-Write ist der einfachste Weg, eine Heizung in einen ungewollten Zustand zu
-bringen.
+Fehler auf `open3e/ERR`. Die Raw-Modi von open3es Listener sind hier bewusst
+nicht implementiert — der Sinn dieses Kommandokanals ist die dekodierte
+Sicht, und ein Raw-Write ist der einfachste Weg, eine Heizung in einen
+ungewollten Zustand zu bringen. Für Software mit eigener Datenpunkt-Datenbank
+gibt es dennoch einen expliziten, separaten Rohdaten-Zugang, siehe
+[Rohdaten für externe Integrationen](#rohdaten-für-externe-integrationen).
 
 ### Home Assistant
 
@@ -441,6 +443,28 @@ Codec-Variante gilt.
 Datenpunkte, die open3e selbst nicht kodieren kann (Text-, MAC-, Datumsfelder:
 `not implemented yet`), werden abgelehnt statt mit einer selbst erfundenen
 Kodierung geschrieben.
+
+---
+
+## Rohdaten für externe Integrationen
+
+Für Software, die CAN-Frames selbst decodiert statt sich auf den Codec dieser
+Firmware zu verlassen — etwa weil sie ihre eigene Datenpunkt-Datenbank
+pflegt —, gibt es eine zweite, von der dekodierten Sicht oben komplett
+unabhängige Schnittstelle auf Rohbyte-Ebene:
+
+- **REST:** `GET /api/rawread` (bis zu 10 DIDs je Aufruf) liefert die rohen
+  UDS-Antwortbytes, `POST /api/rawwrite` (Service `0x2E`) schreibt sie.
+- **MQTT:** die in der Einstellung `rawCanIds` (Komma-Liste) eingetragenen
+  CAN-IDs werden roh auf `<baseTopic>/raw/<id-hex>` veröffentlicht —
+  unabhängig von `points.json` und Auto-Discovery.
+
+Beide Wege laufen komplett an der open3e-Datenbank vorbei — nichts davon wird
+dekodiert oder auf `rw` geprüft. Vollständige Beschreibung, inklusive der
+Scan-Delegation für einen entfernten Client:
+[`docs/raw-gateway-api.md`](docs/raw-gateway-api.md) — entstanden für die
+Integration mit [ioBroker.e3oncan](https://github.com/MyHomeMyData/ioBroker.e3oncan),
+der ersten Software, die diesen Weg nutzt.
 
 ---
 

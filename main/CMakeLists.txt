@@ -22,6 +22,7 @@ idf_component_register(
         "o3e_json.c"
         "ota.c"
         "poller.c"
+        "raw_relay.c"
         "sysinfo.c"
         "uds.c"
     INCLUDE_DIRS "."
