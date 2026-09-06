@@ -38,9 +38,29 @@
 #define GRID_HOLD_DID       2188
 #define STORAGE_HOLD_DID    2226
 
-/* The third field of both datapoints, identical in every message the manager
- * sends. It looks like a validity period in seconds, so it is repeated rather
- * than invented. */
+/* Not written by anything here, but the datapoint to look at next: 2239
+ * ElectricEnergyStorageControlMode, one byte, is what ViCare's own
+ * "Energiemanagement -> Batterie -> Aus" sets to 0. Switching the battery off
+ * there leaves 2226's two limits at 100000 untouched -- so the app's off
+ * switch is this byte, not the limits this module writes. Both work; they are
+ * simply not the same mechanism. */
+#define STORAGE_MODE_DID    2239
+
+/* The third field of 2226 and the trailing one of 2188 -- the same number in
+ * both, in every message this installation's manager sends. Repeated rather
+ * than invented, because nothing here knows what it means.
+ *
+ * It is NOT a protocol constant. A second VX3, reported on the pull request
+ * that added the raw API, carries 15 there instead of 120, and the difference
+ * lines up with DID 2239 ElectricEnergyStorageControlMode: 2 on the
+ * installation this was measured against, 0 on the one reading 15, where the
+ * battery had just been switched off in ViCare. Two installations is not a
+ * rule, but it is enough to know the earlier reading -- "a validity period in
+ * seconds" -- was a guess dressed up as a fact.
+ *
+ * Measured stable over 24 s of sampling, so whatever it is, it does not count
+ * down. Echoing it back is therefore the safe move either way: a hold writes
+ * what the manager itself last wrote in that field, not a number of ours. */
 #define HOLD_VALIDITY       120
 
 /* What the manager writes into the limits, and therefore what "no limit"
