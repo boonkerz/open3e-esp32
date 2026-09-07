@@ -35,15 +35,22 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* Which ECU carries these is installation-dependent, and choosing wrong looks
+ * exactly like the write not working. Here all three live only on 0x6A1
+ * (EMCUSLAVE) and 0x680 has none of them; a VX3 without a Vitocal has no 0x6A1
+ * at all and answers them on 0x680 (EMCUMASTER). The address is a parameter of
+ * every call below, never a constant. */
 #define GRID_HOLD_DID       2188
 #define STORAGE_HOLD_DID    2226
 
 /* Not written by anything here, but the datapoint to look at next: 2239
  * ElectricEnergyStorageControlMode, one byte, is what ViCare's own
- * "Energiemanagement -> Batterie -> Aus" sets to 0. Switching the battery off
- * there leaves 2226's two limits at 100000 untouched -- so the app's off
- * switch is this byte, not the limits this module writes. Both work; they are
- * simply not the same mechanism. */
+ * "Energiemanagement -> Batterie -> Aus" sets to 0 -- on an installation where
+ * it takes. Not here: the manager rewrites it to 2 in the same ten-second
+ * block as the other two, so the app's own off switch never survives. Where it
+ * does take, it leaves 2226's two limits at 100000 untouched -- so the app's
+ * off switch is this byte, not the limits this module writes. Both work; they
+ * are simply not the same mechanism. */
 #define STORAGE_MODE_DID    2239
 
 /* The third field of 2226 and the trailing one of 2188 -- the same number in
@@ -51,12 +58,21 @@
  * than invented, because nothing here knows what it means.
  *
  * It is NOT a protocol constant. A second VX3, reported on the pull request
- * that added the raw API, carries 15 there instead of 120, and the difference
- * lines up with DID 2239 ElectricEnergyStorageControlMode: 2 on the
- * installation this was measured against, 0 on the one reading 15, where the
- * battery had just been switched off in ViCare. Two installations is not a
- * rule, but it is enough to know the earlier reading -- "a validity period in
- * seconds" -- was a guess dressed up as a fact.
+ * that added the raw API, carries 15 there instead of 120. So it is a
+ * parameter, and a parameter is allowed to differ -- which is what the earlier
+ * comment got wrong by writing 120 as though it were furniture.
+ *
+ * What it means is still unproven, but two readings now agree without having
+ * been arrived at together: this file called it a validity period in seconds,
+ * and the same field is named "Lifetime" in the datapoint list that reporter
+ * uses. That name is their own -- neither open3e master nor their E3onCAN
+ * defines any structure for 2188, both leave it a bare RawCodec(6) -- so it is
+ * a second independent guess, not a source.
+ *
+ * Settling it needs an installation whose written value actually takes: write
+ * 15 and 120 and see whether the setpoint survives eight times longer with the
+ * larger one. Not here -- this installation's manager reasserts the datapoint
+ * every ten seconds regardless.
  *
  * Measured stable over 24 s of sampling, so whatever it is, it does not count
  * down. Echoing it back is therefore the safe move either way: a hold writes
@@ -71,7 +87,15 @@
  * value and zero are ever written. */
 #define HOLD_LIMIT_OPEN     100000
 
-/* Beaten against the regulator's ~9.3 s, with room for a missed turn. */
+/* Beaten against the regulator, with room for a missed turn. Measured on this
+ * Vitocal-managed installation: 2188, 2239 and 2226 go out as one block within
+ * 75 ms, and that block repeats every 10.0 s -- intervals of 9.95, 10.00 and
+ * 9.99 s over a 29 s capture of CAN-ID 0x441.
+ *
+ * A timer alone suffices only because the regulator is that slow. Against a
+ * writer of the same period it would win about half the time, which is flicker
+ * rather than a hold. What actually decides it is hold_note_foreign() below:
+ * answering the foreign write instead of racing it. */
 #define HOLD_PERIOD_MS      2000
 
 /* Caps, deliberately low. A wrong sign or a stray zero should cost minutes and
