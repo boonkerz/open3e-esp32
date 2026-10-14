@@ -415,18 +415,19 @@ bool collect_start(const uint16_t *ids, size_t n)
         return false;
     }
     collect_reload();
-    /* One listener spanning the configured identifiers; on_frame() picks out
-     * the ones actually wanted. */
-    uint16_t lo = ids[0], hi = ids[0];
-    for (size_t i = 1; i < n; i++) {
-        if (ids[i] < lo) {
-            lo = ids[i];
-        }
-        if (ids[i] > hi) {
-            hi = ids[i];
-        }
-    }
-    can_port_add_listener(lo, hi, on_frame);
+    /* Listen on exactly the configured identifiers. A range listener
+     * (can_port_add_listener()) would register [min(ids), max(ids)] and, per
+     * on_rx_done()'s dispatch, swallow every frame in that span before it
+     * ever reaches the generic rx_q - including unrelated UDS request/
+     * response traffic to any ECU whose address happens to fall numerically
+     * between two configured collect IDs. on_frame() would discard such a
+     * frame anyway (channel_of() returns -1), but by then it is already lost
+     * to the ISO-TP layer, which starves out as a spurious "no response".
+     * can_port_add_id_listener() still prefilters by [min(ids), max(ids)]
+     * internally, but additionally matches each frame's ID against the exact
+     * list before claiming it, so traffic that merely lies in between passes
+     * through untouched. */
+    can_port_add_id_listener(ids, n, on_frame);
     for (size_t i = 0; i < n; i++) {
         ESP_LOGI(TAG, "listening on CAN-ID 0x%03X", ids[i]);
     }
