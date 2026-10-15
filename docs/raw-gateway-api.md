@@ -65,6 +65,28 @@ Obergrenze für die Batch-Größe pro Aufruf: 10 DIDs. Der ESP32 ist deutlich
 langsamer als ein Raspi — hier bewusst zurückhaltend, damit die
 Bus-Owner-Queue nicht zu lange von einem einzelnen Request blockiert wird.
 
+Optional: `timeout=<ms>` — wie lange die Firmware je DID auf das erste
+Antwort-Frame der ECU wartet (UDS P2). Ohne Parameter 2500 ms, der Wert
+wird auf 200 bis 7000 ms begrenzt. Meldet die ECU „response pending"
+(NRC 0x78), verlängert sich die Frist wie bisher auf das Fünffache, höchstens
+5 s. Der lokale Poller arbeitet mit 1000 ms; für einen externen Client ist das
+zu knapp, weil die HMU einer beschäftigten Anlage gelegentlich länger braucht
+und ioBroker.e3oncan auf eigener CAN-Hardware 7500 ms wartet — mit einer
+Sekunde wurde aus einer langsamen Antwort ein verlorener Wert
+(ioBroker.e3oncan #262). Ein Client, der sein eigenes Timeout kennt, reicht
+es minus Reserve durch, damit der HTTP-Request vor seinem eigenen Abbruch
+beantwortet ist. Der Parameter ist optional, die Antwortform unverändert,
+deshalb bleibt `rawApiVersion` bei `1`.
+
+Ein `"error": "no response"` heißt: die Anfrage wurde gesendet und vom Bus
+quittiert, innerhalb der Frist kam kein Antwort-Frame. Das ist kein
+verlorenes Frame — die CAN-Zähler unter `can` in `/api/status` bleiben davon
+unberührt — sondern eine ECU, die nicht oder zu spät geantwortet hat. Seit
+0.3.0 wiederholt der Controller ein Anfrage-Frame, das von einem Busfehler
+zerstört wurde, bis zu dreimal in Hardware; vorher ging es in dem Fall
+stillschweigend verloren und erschien eine Sekunde später als „no response"
+(Erklärung in `README.md`, Abschnitt Bus-Diagnose).
+
 ### POST /api/rawwrite
 
 Body:
@@ -218,6 +240,16 @@ Zur Firmware selbst liefert `/api/status` drei Felder:
 ```json
 { "firmware": "0.2.0+ec2f7f9", "version": "0.2.0", "elfSha": "068bd904f9f67bcf", ... }
 ```
+Die Raw-Zugriffe selbst werden gezählt, getrennt vom lokalen Poller
+(`poll.failures`):
+```json
+{ "rawRead": { "reads": 1220, "noResponse": 4, "errors": 0, "writes": 2, "writeErrors": 0 }, ... }
+```
+`noResponse` sind Lesungen, bei denen die ECU die Frist verstreichen ließ,
+`errors` alle anderen Fehlschläge (negative Antwort, Transportfehler,
+Bus nicht frei). Die Statusseite zeigt die Zähler in der Karte „MQTT und
+Abfrage" als „Raw-Reads extern".
+
 `version` ist die Release-Nummer aus `version.txt` (semantisch versioniert),
 `firmware` dieselbe Nummer mit dem Commit als Build-Metadatum (`-dirty`,
 wenn aus einem veränderten Arbeitsverzeichnis gebaut), `elfSha` die

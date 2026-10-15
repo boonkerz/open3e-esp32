@@ -75,6 +75,12 @@ static void restart_soon(uint32_t delay_ms)
  * one that simply answered "no" (see docs/raw-gateway-api.md upstream). */
 #define RAW_API_VERSION 1
 
+/* Counted here rather than in can_port.c: these are the external client's
+ * reads, kept apart from the local poller's `poll.failures` so the status
+ * page can say which of the two is losing values. */
+static uint32_t s_rawread_reads, s_rawread_no_response, s_rawread_errors;
+static uint32_t s_rawwrite_writes, s_rawwrite_errors;
+
 /* ------------------------------------------------------------------ */
 /* helpers                                                              */
 
@@ -329,6 +335,17 @@ static esp_err_t h_status(httpd_req_t *r)
              "\"published\": %u, \"dropped\": %u}, ",
              rl.enabled ? "true" : "false", rl.n_ids,
              (unsigned)rl.frames, (unsigned)rl.published, (unsigned)rl.dropped);
+    o3e_buf_adds(&b, t);
+
+    /* The external client's UDS traffic, apart from the local poller's. A
+     * "no response" here is a deadline passing, not a frame lost on the
+     * wire; the wire's own counters are under `can`. */
+    snprintf(t, sizeof(t),
+             "\"rawRead\": {\"reads\": %u, \"noResponse\": %u, \"errors\": %u, "
+             "\"writes\": %u, \"writeErrors\": %u}, ",
+             (unsigned)s_rawread_reads, (unsigned)s_rawread_no_response,
+             (unsigned)s_rawread_errors, (unsigned)s_rawwrite_writes,
+             (unsigned)s_rawwrite_errors);
     o3e_buf_adds(&b, t);
 
     knx_status_t kx;
@@ -1017,6 +1034,36 @@ static esp_err_t h_write(httpd_req_t *r)
 
 #define RAWREAD_MAX_BATCH 10
 
+/* How long a raw read waits for the ECU's first frame. The local poller uses
+ * UDS_P2_MS (1 s); an external client gets more by default, and may ask for
+ * its own via `timeout=<ms>`. ioBroker.e3oncan waits 7.5 s for a UDS answer
+ * on its own CAN interface, and the HMU of a busy installation does take more
+ * than a second now and then. Answering "no response" after one second where
+ * a Raspberry Pi would have waited on turned a slow answer into a lost value
+ * (ioBroker.e3oncan #262). The ceiling stays below e3oncan's own deadline so
+ * the HTTP request is answered before the client gives up on it; the floor
+ * keeps a scan from making the ECU look empty. One rawread call from e3oncan
+ * carries one DID, so even the ceiling holds the bus for a bounded time. */
+#define RAWREAD_P2_MS      2500
+#define RAWREAD_P2_MIN_MS   200
+#define RAWREAD_P2_MAX_MS  7000
+
+static uint32_t rawread_timeout(httpd_req_t *r)
+{
+    char t[16];
+    if (!query_str(r, "timeout", t, sizeof(t))) {
+        return RAWREAD_P2_MS;
+    }
+    long ms = strtol(t, NULL, 10);
+    if (ms < RAWREAD_P2_MIN_MS) {
+        return RAWREAD_P2_MIN_MS;
+    }
+    if (ms > RAWREAD_P2_MAX_MS) {
+        return RAWREAD_P2_MAX_MS;
+    }
+    return (uint32_t)ms;
+}
+
 static esp_err_t h_rawread(httpd_req_t *r)
 {
     char ecu_str[16], did_str[128];
@@ -1025,6 +1072,7 @@ static esp_err_t h_rawread(httpd_req_t *r)
         return send_err(r, 400, "ecu and did parameters are required");
     }
     uint16_t ecu = (uint16_t)strtol(ecu_str, NULL, 0);
+    uint32_t p2_ms = rawread_timeout(r);
 
     uint8_t *buf = malloc(ISOTP_MAX_PAYLOAD);
     if (!buf) {
@@ -1045,7 +1093,13 @@ static esp_err_t h_rawread(httpd_req_t *r)
          tok = strtok_r(NULL, ",", &save), count++) {
         uint16_t did = (uint16_t)strtol(tok, NULL, 0);
         size_t n = 0;
-        uds_result_t res = can_read_did(ecu, did, buf, ISOTP_MAX_PAYLOAD, &n, UDS_P2_MS);
+        uds_result_t res = can_read_did(ecu, did, buf, ISOTP_MAX_PAYLOAD, &n, p2_ms);
+        s_rawread_reads++;
+        if (res.err == UDS_ERR_TIMEOUT) {
+            s_rawread_no_response++;
+        } else if (res.err != UDS_OK) {
+            s_rawread_errors++;
+        }
 
         snprintf(t, sizeof(t), "%u", did);
         o3e_buf_adds(&b, count ? ", {\"did\": " : "{\"did\": ");
@@ -1116,8 +1170,10 @@ static esp_err_t h_rawwrite(httpd_req_t *r)
         return send_err(r, 400, "data must be an even-length hex string");
     }
 
-    uds_result_t res = can_write_did(ecu, did, payload, len, UDS_P2_MS);
+    uds_result_t res = can_write_did(ecu, did, payload, len, RAWREAD_P2_MS);
+    s_rawwrite_writes++;
     if (res.err != UDS_OK) {
+        s_rawwrite_errors++;
         return send_err(r, 400, uds_strerror(res));
     }
     ESP_LOGI(TAG, "raw wrote 0x%03X.%u (%u bytes)", ecu, did, (unsigned)len);

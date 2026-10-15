@@ -190,6 +190,11 @@ function renderStatus(s) {
   /* TEC/REC climb long before the controller actually goes bus-off, so they
      are the earliest visible sign of a wiring or bitrate problem. */
   $("s-errcnt").textContent = `${s.can.txErrCount} / ${s.can.rxErrCount}`;
+  /* Frames the receive interrupt could not queue: the one counter on this
+     card that means data this firmware itself threw away. */
+  const missed = $("s-rxmissed");
+  missed.textContent = s.can.rxMissed;
+  missed.style.color = s.can.rxMissed ? "var(--err)" : "";
   $("s-recov").textContent = s.can.recoveries;
   /* A single exchange is bounded to a few seconds; anything longer means one
      is stuck, and every other read will fail with "transport error" until it
@@ -240,6 +245,22 @@ function renderStatus(s) {
     : "nichts veröffentlicht";
   $("s-points").textContent = s.poll.points;
   $("s-pollerr").textContent = s.poll.failures;
+  /* An external client's UDS traffic (ioBroker.e3oncan over /api/rawread),
+     apart from our own poller: "ohne Antwort" is the ECU missing a deadline,
+     not a frame lost on the bus. */
+  const rr = s.rawRead;
+  const rrEl = $("s-rawread");
+  if (rr && (rr.reads || rr.writes)) {
+    let txt = `${rr.reads} gelesen`;
+    if (rr.noResponse) txt += `, ${rr.noResponse} ohne Antwort`;
+    if (rr.errors) txt += `, ${rr.errors} Fehler`;
+    if (rr.writes) txt += `, ${rr.writes} geschrieben` + (rr.writeErrors ? ` (${rr.writeErrors} Fehler)` : "");
+    rrEl.textContent = txt;
+    rrEl.style.color = (rr.errors || rr.writeErrors) ? "var(--err)" : "";
+  } else {
+    rrEl.textContent = "keine";
+    rrEl.style.color = "";
+  }
 
   $("s-fw").textContent = s.firmware;
   /* The raw API has its own version, because external integrations check it

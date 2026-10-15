@@ -290,11 +290,18 @@ static bool node_create(uint32_t bitrate, bool loopback, bool self_test,
             .bus_off_indicator = -1,
         },
         .bit_timing = { .bitrate = bitrate },
-        /* No hardware retransmission: an unacknowledged frame is a fact worth
-         * reporting to the ISO-TP layer, not something to repeat silently. The
-         * field is zero-initialised to the same value; saying it explicitly
-         * keeps it from looking like an oversight. */
-        .fail_retry_cnt = 0,
+        /* A few hardware retries, not none and not forever. With none, a
+         * request frame that gets hit by one of the bus errors a noisy
+         * installation produces is simply gone: the ECU never saw it, the
+         * caller sees "no response" a second later, and TEC twitches by 8 in
+         * between (reported in ioBroker.e3oncan #262). Every socketcan
+         * adapter retransmits in that situation, which is why the same bus
+         * looks clean from a Raspberry Pi. Forever would be wrong too: a scan
+         * addresses ECUs that do not exist, and an unacknowledged frame
+         * retried without limit hammers the bus until the controller goes
+         * error-passive. Three retries cover a destroyed frame within the
+         * same millisecond and still let an empty address give up at once. */
+        .fail_retry_cnt = 3,
         .tx_queue_depth = 8,
         .intr_priority = 0,
         .flags = {

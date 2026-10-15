@@ -20,6 +20,35 @@ bis dahin auf der Flash-Seite lag.
   `output`, KNX-Meldung beim Schalten. Nach einem Neustart ist ein Ausgang
   aus. Die Einstellungen bekommen je Pin `mode` und `activeLow`; ein
   Backup ohne die Felder bleibt ein Eingang.
+- **Raw-Reads mit eigener Frist:** `GET /api/rawread` wartet 2,5 s statt 1 s
+  auf die Antwort der ECU, ein Client kann per `timeout=<ms>` (200 bis 7000)
+  seine eigene Frist durchreichen. `/api/status` zählt die externen
+  Zugriffe unter `rawRead` (gelesen, ohne Antwort, Fehler, geschrieben),
+  die Statusseite zeigt sie als „Raw-Reads extern". `rawApiVersion` bleibt
+  `1`.
+- **Frames verpasst** auf der Karte „CAN-Bus": Frames, die der
+  Empfangs-Interrupt nicht mehr ablegen konnte, bisher nur in `/api/status`
+  als `rxMissed`. Die Karte erklärt außerdem, was Busfehler, TX/RX und
+  verpasste Frames jeweils zählen.
+
+### Geändert
+
+- **Anfrage-Frames werden bei einem Busfehler wiederholt**, bis zu dreimal
+  in Hardware. Bisher sendete der Controller jedes Frame genau einmal; traf
+  ein Busfehler die Anfrage, war sie verloren und erschien eine Sekunde
+  später als „no response", obwohl die ECU sie nie gesehen hatte
+  (ioBroker.e3oncan #262). Leere Adressen beim Scan geben weiterhin sofort
+  auf.
+
+### Behoben
+
+- **Collect-Listener** gleicht die konfigurierten CAN-IDs exakt ab statt
+  alles zwischen kleinster und größter ID zu nehmen (#10, MyHomeMyData).
+  Vorher schluckte der Listener auch UDS-Anfragen und -Antworten, deren ID
+  in die Spanne fiel, etwa 0x680/0x690 bei Collect-IDs von 0x250 bis 0x693;
+  Poller und `rawread` meldeten dann „no response", und weil alle
+  UDS-Zugriffe hintereinander auf den Bus warten, stockte die ganze Queue
+  für etwa zehn Sekunden.
 
 ## 0.2.0 — 2026-10-06
 

@@ -154,6 +154,29 @@ Auf der Statusseite stehen die Fehlerzähler TEC/RX des Controllers. Die steigen
 messbar an, lange bevor der Knoten tatsächlich `bus-off` geht — das ist der
 früheste sichtbare Hinweis auf ein Verkabelungs- oder Bitraten-Problem.
 
+Die Karte „CAN-Bus" zeigt vier Zähler, die Verschiedenes bedeuten:
+
+| Zähler | Was er zählt | Verhalten |
+|---|---|---|
+| Busfehler | jeden vom Controller erkannten Bit-, Stuff-, Form-, CRC- oder ACK-Fehler | läuft seit dem Start auf, Neustart setzt ihn zurück |
+| Fehlerzähler TX / RX | TEC und REC des Controllers | springen bei einem Fehler hoch (TX um 8, RX um 1), gehen mit jedem fehlerfreien Frame um 1 zurück; ein kurzer Ausschlag ist normal und meist schon weg, bevor die Seite ihn abholt |
+| Frames verpasst | Frames, die der Empfangs-Interrupt nicht mehr in die Warteschlange bekam | die einzigen Frames, die diese Firmware wirklich verworfen hat; sollte 0 sein |
+| Bus-Off-Recovery | wie oft der Controller nach `bus-off` neu gestartet wurde | 0 auf einem gesunden Bus |
+
+Ein paar Busfehler pro Minute hat fast jede Anlage; ein paar pro Sekunde sind
+ein Abschluss-, Masse- oder Störungsproblem, auch wenn alle Werte ankommen.
+Ein **„no response"** oder ein fehlgeschlagener Read ist dagegen kein
+Busfehler: die Anfrage wurde gesendet und quittiert, die ECU hat innerhalb der
+Frist nicht geantwortet. Die beiden Dinge hängen trotzdem zusammen. Trifft ein
+Busfehler genau das Anfrage-Frame, ist die Anfrage zerstört, der Sender muss
+sie wiederholen. Der Controller tut das seit 0.3.0 bis zu dreimal in Hardware,
+so wie jeder socketcan-Adapter; davor ging die Anfrage in dem Moment verloren,
+TEC zuckte kurz um 8 und eine Sekunde später stand „no response" im Log, ohne
+dass die ECU je etwas gesehen hatte. Für externe Clients wie ioBroker.e3oncan
+wartet `rawread` außerdem 2,5 s statt 1 s auf die Antwort, einstellbar per
+`timeout` (siehe `docs/raw-gateway-api.md`), weil die HMU einer beschäftigten
+Anlage gelegentlich länger braucht.
+
 **Wichtig:** Es darf immer nur *ein* Master am Bus sein. Läuft parallel noch ein
 open3e auf einem Raspberry Pi, stören sich die beiden ISO-TP-Sitzungen
 gegenseitig. Zum Vergleichen abwechselnd betreiben, nie gleichzeitig.
@@ -465,7 +488,8 @@ Firmware zu verlassen — etwa weil sie ihre eigene Datenpunkt-Datenbank
 pflegt —, gibt es eine zweite, von der dekodierten Sicht oben komplett
 unabhängige Schnittstelle auf Rohbyte-Ebene:
 
-- **REST:** `GET /api/rawread` (bis zu 10 DIDs je Aufruf) liefert die rohen
+- **REST:** `GET /api/rawread` (bis zu 10 DIDs je Aufruf, Wartezeit je DID
+  per `timeout=<ms>` wählbar, sonst 2,5 s) liefert die rohen
   UDS-Antwortbytes, `POST /api/rawwrite` (Service `0x2E`) schreibt sie.
 - **MQTT:** die in der Einstellung `rawCanIds` (Komma-Liste) eingetragenen
   CAN-IDs werden roh auf `<baseTopic>/raw/<id-hex>` veröffentlicht —
