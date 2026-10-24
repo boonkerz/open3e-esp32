@@ -296,12 +296,19 @@ static esp_err_t h_status(httpd_req_t *r)
     o3e_buf_add_json_str(&b, net.ap_ssid);
     o3e_buf_adds(&b, "}, ");
 
+    /* busErrors is the driver's total and includes lost arbitration; the
+     * breakdown that follows is what it was made of. */
     snprintf(t, sizeof(t),
-             "\"can\": {\"state\": \"%s\", \"txFailed\": %u, \"rxMissed\": %u, "
-             "\"busErrors\": %u, \"txErrCount\": %u, \"rxErrCount\": %u, "
+             "\"can\": {\"state\": \"%s\", \"txFailed\": %u, \"txRetries\": %u, "
+             "\"rxMissed\": %u, \"busErrors\": %u, \"arbLost\": %u, "
+             "\"bitErrors\": %u, \"stuffErrors\": %u, \"formErrors\": %u, "
+             "\"ackErrors\": %u, \"txErrCount\": %u, \"rxErrCount\": %u, "
              "\"recoveries\": %u, \"holder\": \"%s\", \"heldMs\": %u}, ",
              can.state ? can.state : "stopped", (unsigned)can.tx_failed,
-             (unsigned)can.rx_missed, (unsigned)can.bus_errors,
+             (unsigned)can.tx_retries, (unsigned)can.rx_missed,
+             (unsigned)can.bus_errors, (unsigned)can.arb_lost,
+             (unsigned)can.bit_errors, (unsigned)can.stuff_errors,
+             (unsigned)can.form_errors, (unsigned)can.ack_errors,
              (unsigned)can.tx_err_count, (unsigned)can.rx_err_count,
              (unsigned)can.recovery_count, can.holder, (unsigned)can.held_ms);
     o3e_buf_adds(&b, t);

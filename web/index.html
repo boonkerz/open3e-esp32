@@ -77,7 +77,9 @@
     <div class="grid">
       <div class="kv"><div class="k">Zustand</div><div class="v" id="s-canstate">–</div></div>
       <div class="kv"><div class="k">Busfehler</div><div class="v" id="s-buserr">–</div></div>
+      <div class="kv"><div class="k">Arbitrierung verloren</div><div class="v" id="s-arblost">–</div></div>
       <div class="kv"><div class="k">Fehlerzähler TX / RX</div><div class="v" id="s-errcnt">–</div></div>
+      <div class="kv"><div class="k">Sendewiederholungen</div><div class="v" id="s-txretry">–</div></div>
       <div class="kv"><div class="k">Frames verpasst</div><div class="v" id="s-rxmissed">–</div></div>
       <div class="kv"><div class="k">Bus-Off-Recovery</div><div class="v" id="s-recov">–</div></div>
       <div class="kv"><div class="k">Bus belegt von</div><div class="v" id="s-holder">–</div></div>
@@ -85,10 +87,14 @@
     <p class="hint" style="margin:12px 0 0">250 kBit/s, TX GPIO15, RX GPIO16.
       <b>TX-Fehlerzähler steigt, RX bleibt 0</b> heißt: gesendet, aber niemand
       quittiert — auf CAN quittiert jeder andere aktive Knoten jedes Frame.
-      <b>Busfehler</b> zählt seit dem Start hoch; <b>TX / RX</b> sind die
-      Live-Zähler des Controllers, sie springen bei einem Fehler hoch und bauen
-      sich mit jedem fehlerfreien Frame wieder ab. <b>Frames verpasst</b> sind
-      die einzigen, die diese Firmware wirklich verworfen hat.</p>
+      <b>Busfehler</b> zählt echte Leitungsfehler seit dem Start, nach Art
+      aufgeschlüsselt. <b>Arbitrierung verloren</b> ist kein Fehler: ein anderer
+      Knoten hat im selben Bit angefangen und gewonnen, das Frame wird
+      wiederholt; es kann nur passieren, während das Gerät selbst sendet.
+      <b>TX / RX</b> sind die Live-Zähler des Controllers, sie springen bei
+      einem Fehler hoch und bauen sich mit jedem fehlerfreien Frame wieder ab.
+      <b>Frames verpasst</b> sind die einzigen, die diese Firmware wirklich
+      verworfen hat.</p>
     <div class="warnbox" style="margin-top:12px">
       <b>Busmasse an GND des Boards.</b> Die CAN-Klemme hat laut Schaltplan nur
       CANH und CANL — die Masse gehört an den Minus der DC-Klemme. Zwischen

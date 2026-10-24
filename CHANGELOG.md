@@ -26,6 +26,15 @@ bis dahin auf der Flash-Seite lag.
   Zugriffe unter `rawRead` (gelesen, ohne Antwort, Fehler, geschrieben),
   die Statusseite zeigt sie als „Raw-Reads extern". `rawApiVersion` bleibt
   `1`.
+- **Busfehler nach Art** auf der Karte „CAN-Bus": Bit, Stuff, Form und
+  ACK getrennt gezählt, dazu „Arbitrierung verloren" als eigene Zeile. Der
+  ESP-IDF-Treiber zählt verlorene Arbitrierung in seiner Fehlersumme mit,
+  obwohl es kein Fehler ist, sondern ein anderer Knoten, der im selben Bit
+  angefangen hat; es kann nur passieren, während das Gerät selbst sendet.
+  Die bisherige Summe „Busfehler" stieg deshalb genau dann, wenn der Poller
+  lief, und sah nach Verkabelung aus. `/api/status` liefert `arbLost`,
+  `bitErrors`, `stuffErrors`, `formErrors`, `ackErrors` und `txRetries`
+  neben dem unveränderten `busErrors`.
 - **Frames verpasst** auf der Karte „CAN-Bus": Frames, die der
   Empfangs-Interrupt nicht mehr ablegen konnte, bisher nur in `/api/status`
   als `rxMissed`. Die Karte erklärt außerdem, was Busfehler, TX/RX und
@@ -33,12 +42,15 @@ bis dahin auf der Flash-Seite lag.
 
 ### Geändert
 
-- **Anfrage-Frames werden bei einem Busfehler wiederholt**, bis zu dreimal
-  in Hardware. Bisher sendete der Controller jedes Frame genau einmal; traf
-  ein Busfehler die Anfrage, war sie verloren und erschien eine Sekunde
-  später als „no response", obwohl die ECU sie nie gesehen hatte
-  (ioBroker.e3oncan #262). Leere Adressen beim Scan geben weiterhin sofort
-  auf.
+- **Frames werden nach verlorener Arbitrierung oder einem Busfehler
+  wiederholt**, bis zu dreimal. Bisher sendete der Controller jedes Frame
+  genau einmal; traf ein Busfehler die Anfrage oder fing ein anderer Knoten
+  im selben Bit an, war sie verloren und erschien eine Sekunde später als
+  „no response", obwohl die ECU sie nie gesehen hatte (ioBroker.e3oncan
+  #262). Die Wiederholung liegt in der Firmware, nicht im Controller: der
+  klassische TWAI-Controller des ESP32-S3 kennt nur „einmal" oder „endlos",
+  und „endlos" würde ohne Gegenstelle am Bus den Sendepfad blockieren.
+  Leere Adressen beim Scan geben weiterhin sofort auf.
 
 ### Behoben
 

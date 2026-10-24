@@ -186,7 +186,27 @@ function renderStatus(s) {
   });
 
   $("s-canstate").textContent = s.can.state;
-  $("s-buserr").textContent = s.can.busErrors;
+  /* The driver's busErrors total includes lost arbitration, which is not a
+     fault. Show the real errors by kind, and the arbitration count on its
+     own row, so a number that climbs only while the poller runs stops
+     looking like a wiring problem. Older firmware has no breakdown; then the
+     total is all there is. */
+  const c = s.can;
+  if (c.arbLost != null) {
+    const kinds = [
+      [c.bitErrors, "Bit"], [c.stuffErrors, "Stuff"],
+      [c.formErrors, "Form"], [c.ackErrors, "ACK"],
+    ].filter(([n]) => n);
+    const real = Math.max(0, c.busErrors - c.arbLost);
+    $("s-buserr").textContent = kinds.length
+      ? `${real} (${kinds.map(([n, k]) => `${n} ${k}`).join(", ")})` : `${real}`;
+    $("s-arblost").textContent = c.arbLost;
+    $("s-txretry").textContent = c.txRetries;
+  } else {
+    $("s-buserr").textContent = c.busErrors;
+    $("s-arblost").textContent = "–";
+    $("s-txretry").textContent = "–";
+  }
   /* TEC/REC climb long before the controller actually goes bus-off, so they
      are the earliest visible sign of a wiring or bitrate problem. */
   $("s-errcnt").textContent = `${s.can.txErrCount} / ${s.can.rxErrCount}`;

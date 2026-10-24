@@ -27,7 +27,21 @@ typedef struct {
     bool     running;
     uint32_t tx_failed;
     uint32_t rx_missed;        /* frames the ISR could not queue */
-    uint32_t bus_errors;
+    uint32_t bus_errors;       /* the driver's count; includes lost arbitration */
+    /* What those bus errors were. Lost arbitration is not a fault at all,
+     * just another node starting a frame in the same bit and winning; it can
+     * only happen while we transmit, so a counter that includes it climbs
+     * exactly when the poller runs and looks like trouble that is not there.
+     * Bit, stuff and form errors are signal quality, ACK errors mean nobody
+     * answered the frame at all. */
+    uint32_t arb_lost;
+    uint32_t bit_errors;
+    uint32_t stuff_errors;
+    uint32_t form_errors;
+    uint32_t ack_errors;
+    uint32_t tx_retries;       /* frames sent again after the first attempt
+                                  failed (lost arbitration or a bus error);
+                                  tx_failed counts the ones that never went */
     uint16_t tx_err_count;     /* the controller's TEC and REC: a steady climb
                                   points at wiring or a wrong bitrate long
                                   before the node actually goes bus-off */

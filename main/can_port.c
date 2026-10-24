@@ -71,6 +71,25 @@ static QueueHandle_t      rx_q;
 static twai_node_handle_t node;
 static volatile bool      running;
 static can_stats_t        stats;
+/* Outcome of the frame most recently handed to the controller, written by the
+ * TX-done interrupt. Valid once twai_node_transmit_wait_all_done() returns:
+ * the driver fires on_tx_done before it signals idle. One flag is enough
+ * because every transmit goes through hal_send() under bus_lock. */
+static volatile bool      s_tx_ok;
+
+/* How often hal_send() tries before giving up. The classic TWAI controller
+ * in the ESP32-S3 knows two modes only, send once or retry forever; the
+ * driver's fail_retry_cnt maps every value but -1 to send once (twai_hal_v1.c,
+ * `.ss = retry_cnt != -1`). Forever is wrong for a gateway that may be alone
+ * on a bus: an unacknowledged frame would be repeated until the controller
+ * is error-passive and the transmit path blocked. So the retry lives here:
+ * send once, and if the controller reports the frame did not make it --
+ * lost arbitration, or a bus error during the frame -- hand it over again. A
+ * frame hit by one of the bus errors a noisy installation produces otherwise
+ * simply vanishes, which the caller sees a second later as "no response"
+ * although the ECU never saw the request (ioBroker.e3oncan #262). Every
+ * socketcan adapter retransmits in that situation. */
+#define TX_ATTEMPTS 4
 
 /* ------------------------------------------------------------------ */
 /* ISO-TP HAL backed by TWAI                                            */
@@ -94,15 +113,64 @@ static bool hal_send(void *ctx, uint32_t id, const uint8_t *data, uint8_t len)
      * still part of the story when reading a trace back. */
     cantrace_put((uint16_t)id, payload, len, true);
 
-    if (twai_node_transmit(node, &frame, 50) != ESP_OK) {
-        stats.tx_failed++;
-        return false;
+    for (int attempt = 0; attempt < TX_ATTEMPTS; attempt++) {
+        if (attempt) {
+            stats.tx_retries++;
+        }
+        s_tx_ok = false;
+        if (twai_node_transmit(node, &frame, 50) != ESP_OK) {
+            stats.tx_failed++;
+            return false;
+        }
+        if (twai_node_transmit_wait_all_done(node, 100) != ESP_OK) {
+            stats.tx_failed++;
+            return false;
+        }
+        if (s_tx_ok) {
+            return true;
+        }
     }
-    if (twai_node_transmit_wait_all_done(node, 100) != ESP_OK) {
-        stats.tx_failed++;
-        return false;
+    stats.tx_failed++;
+    return false;
+}
+
+static bool IRAM_ATTR on_tx_done(twai_node_handle_t handle,
+                                 const twai_tx_done_event_data_t *edata,
+                                 void *user_ctx)
+{
+    (void)handle;
+    (void)user_ctx;
+    s_tx_ok = edata->is_tx_success;
+    return false;
+}
+
+/* The driver counts lost arbitration together with real bus errors in its
+ * bus_err_num (esp_twai_onchip.c handles TWAI_HAL_EVENT_BUS_ERR and
+ * TWAI_HAL_EVENT_ARB_LOST in one place). Only the error flags tell them
+ * apart, and only here, at the moment of the event. */
+static bool IRAM_ATTR on_error(twai_node_handle_t handle,
+                               const twai_error_event_data_t *edata,
+                               void *user_ctx)
+{
+    (void)handle;
+    (void)user_ctx;
+    twai_error_flags_t f = edata->err_flags;
+    if (f.arb_lost) {
+        stats.arb_lost++;
     }
-    return true;
+    if (f.bit_err) {
+        stats.bit_errors++;
+    }
+    if (f.stuff_err) {
+        stats.stuff_errors++;
+    }
+    if (f.form_err) {
+        stats.form_errors++;
+    }
+    if (f.ack_err) {
+        stats.ack_errors++;
+    }
+    return false;
 }
 
 static bool hal_recv(void *ctx, uint32_t *id, uint8_t *data, uint8_t *len,
@@ -290,18 +358,11 @@ static bool node_create(uint32_t bitrate, bool loopback, bool self_test,
             .bus_off_indicator = -1,
         },
         .bit_timing = { .bitrate = bitrate },
-        /* A few hardware retries, not none and not forever. With none, a
-         * request frame that gets hit by one of the bus errors a noisy
-         * installation produces is simply gone: the ECU never saw it, the
-         * caller sees "no response" a second later, and TEC twitches by 8 in
-         * between (reported in ioBroker.e3oncan #262). Every socketcan
-         * adapter retransmits in that situation, which is why the same bus
-         * looks clean from a Raspberry Pi. Forever would be wrong too: a scan
-         * addresses ECUs that do not exist, and an unacknowledged frame
-         * retried without limit hammers the bus until the controller goes
-         * error-passive. Three retries cover a destroyed frame within the
-         * same millisecond and still let an empty address give up at once. */
-        .fail_retry_cnt = 3,
+        /* Send once; hal_send() retries in software, see TX_ATTEMPTS. On
+         * this controller every value but -1 means the same as 0, and -1
+         * (retry forever) would wedge the transmit path when nobody is
+         * there to acknowledge. */
+        .fail_retry_cnt = 0,
         .tx_queue_depth = 8,
         .intr_priority = 0,
         .flags = {
@@ -315,8 +376,10 @@ static bool node_create(uint32_t bitrate, bool loopback, bool self_test,
         return false;
     }
     const twai_event_callbacks_t cbs = {
+        .on_tx_done = on_tx_done,
         .on_rx_done = on_rx_done,
         .on_state_change = on_state_change,
+        .on_error = on_error,
     };
     if (twai_node_register_event_callbacks(node, &cbs, NULL) != ESP_OK ||
         twai_node_enable(node) != ESP_OK) {

@@ -82,10 +82,10 @@ Ein `"error": "no response"` heißt: die Anfrage wurde gesendet und vom Bus
 quittiert, innerhalb der Frist kam kein Antwort-Frame. Das ist kein
 verlorenes Frame — die CAN-Zähler unter `can` in `/api/status` bleiben davon
 unberührt — sondern eine ECU, die nicht oder zu spät geantwortet hat. Seit
-0.3.0 wiederholt der Controller ein Anfrage-Frame, das von einem Busfehler
-zerstört wurde, bis zu dreimal in Hardware; vorher ging es in dem Fall
-stillschweigend verloren und erschien eine Sekunde später als „no response"
-(Erklärung in `README.md`, Abschnitt Bus-Diagnose).
+0.3.0 wiederholt die Firmware ein Anfrage-Frame, das von einem Busfehler
+zerstört wurde oder die Arbitrierung verloren hat, bis zu dreimal; vorher
+ging es in dem Fall stillschweigend verloren und erschien eine Sekunde später
+als „no response" (Erklärung in `README.md`, Abschnitt Bus-Diagnose).
 
 ### POST /api/rawwrite
 
