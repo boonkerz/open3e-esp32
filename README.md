@@ -158,12 +158,18 @@ Die Karte „CAN-Bus" zeigt vier Zähler, die Verschiedenes bedeuten:
 
 | Zähler | Was er zählt | Verhalten |
 |---|---|---|
-| Busfehler | jeden vom Controller erkannten Bit-, Stuff-, Form- oder ACK-Fehler, nach Art aufgeschlüsselt | läuft seit dem Start auf, Neustart setzt ihn zurück |
+| Busfehler | jeden vom Controller erkannten Fehler, nach Art aufgeschlüsselt: CRC, Bit, Stuff, Form, ACK, andere | läuft seit dem Start auf, Neustart setzt ihn zurück |
+| Fehler beim Empfang / Senden | auf welcher Seite der Controller stand, als er den Fehler sah | Empfangsfehler sind Frames der Gegenstelle, die beschädigt ankamen und von ihr wiederholt wurden: ein Blick auf den Signalweg zum Eingang des Boards. Sendefehler sind eigene Frames, die die Firmware wiederholt |
+| Fehlerstelle im Frame | an welcher Stelle des Frames der Fehler auftrat, etwa Datenfeld oder CRC-Sequenz | Fehler, die sich auf eine Stelle häufen, sind ein Timing- oder Abtastproblem zwischen den Controllern; gleichmäßig verteilte sind Störungen auf der Leitung |
 | Arbitrierung verloren | ein anderer Knoten hat im selben Bit zu senden begonnen und gewonnen | kein Fehler, das Frame wird wiederholt; kann nur passieren, während das Gerät selbst sendet, steigt also genau dann, wenn der Poller läuft. Der ESP-IDF-Treiber zählt es in seiner Summe mit, deshalb weist die Karte es getrennt aus |
 | Sendewiederholungen | Frames, die nach verlorener Arbitrierung oder einem Busfehler noch einmal gesendet wurden | ein paar pro Stunde auf einem belebten Bus sind normal |
 | Fehlerzähler TX / RX | TEC und REC des Controllers | springen bei einem Fehler hoch (TX um 8, RX um 1), gehen mit jedem fehlerfreien Frame um 1 zurück; ein kurzer Ausschlag ist normal und meist schon weg, bevor die Seite ihn abholt |
 | Frames verpasst | Frames, die der Empfangs-Interrupt nicht mehr in die Warteschlange bekam | die einzigen Frames, die diese Firmware wirklich verworfen hat; sollte 0 sein |
 | Bus-Off-Recovery | wie oft der Controller nach `bus-off` neu gestartet wurde | 0 auf einem gesunden Bus |
+
+Die Aufschlüsselung liest die Firmware direkt aus dem Fehlerregister des
+Controllers, weil der ESP-IDF-Treiber davon nur vier Flags weiterreicht und
+einen CRC-Fehler gar nicht benennt.
 
 Ein paar Busfehler pro Minute hat fast jede Anlage; ein paar pro Sekunde sind
 ein Abschluss-, Masse- oder Störungsproblem, auch wenn alle Werte ankommen.

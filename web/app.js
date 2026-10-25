@@ -194,18 +194,35 @@ function renderStatus(s) {
   const c = s.can;
   if (c.arbLost != null) {
     const kinds = [
-      [c.bitErrors, "Bit"], [c.stuffErrors, "Stuff"],
-      [c.formErrors, "Form"], [c.ackErrors, "ACK"],
+      [c.crcErrors, "CRC"], [c.bitErrors, "Bit"], [c.stuffErrors, "Stuff"],
+      [c.formErrors, "Form"], [c.ackErrors, "ACK"], [c.otherErrors, "andere"],
     ].filter(([n]) => n);
     const real = Math.max(0, c.busErrors - c.arbLost);
     $("s-buserr").textContent = kinds.length
       ? `${real} (${kinds.map(([n, k]) => `${n} ${k}`).join(", ")})` : `${real}`;
     $("s-arblost").textContent = c.arbLost;
     $("s-txretry").textContent = c.txRetries;
+    $("s-errdir").textContent = c.rxErrors != null ? `${c.rxErrors} / ${c.txErrors}` : "–";
+    /* The controller's segment codes, in the order a frame has them. */
+    const segNames = {
+      sof: "Start", id: "Kennung", rtr: "RTR-Bit", ide: "IDE-Bit",
+      reserved: "reserviertes Bit", dlc: "DLC", data: "Datenfeld",
+      crc: "CRC-Sequenz", crcDelim: "CRC-Delimiter", ackSlot: "ACK-Slot",
+      ackDelim: "ACK-Delimiter", eof: "Frame-Ende", intermission: "Intermission",
+      activeErrorFlag: "aktives Error-Flag", passiveErrorFlag: "passives Error-Flag",
+      errorDelim: "Error-Delimiter", superposition: "überlagerte Flags",
+      overloadFlag: "Overload-Flag",
+    };
+    const segs = Object.entries(c.errSegments || {})
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, n]) => `${segNames[k] || k} ${n}`);
+    $("s-errseg").textContent = segs.length ? segs.join(", ") : "–";
   } else {
     $("s-buserr").textContent = c.busErrors;
     $("s-arblost").textContent = "–";
     $("s-txretry").textContent = "–";
+    $("s-errdir").textContent = "–";
+    $("s-errseg").textContent = "–";
   }
   /* TEC/REC climb long before the controller actually goes bus-off, so they
      are the earliest visible sign of a wiring or bitrate problem. */

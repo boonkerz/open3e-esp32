@@ -5,6 +5,7 @@
 #include "cantrace.h"
 #include "esp_twai.h"
 #include "esp_twai_onchip.h"
+#include "hal/twai_ll.h"
 #include "esp_log.h"
 #include "esp_rom_sys.h"
 #include "esp_timer.h"
@@ -146,8 +147,17 @@ static bool IRAM_ATTR on_tx_done(twai_node_handle_t handle,
 
 /* The driver counts lost arbitration together with real bus errors in its
  * bus_err_num (esp_twai_onchip.c handles TWAI_HAL_EVENT_BUS_ERR and
- * TWAI_HAL_EVENT_ARB_LOST in one place). Only the error flags tell them
- * apart, and only here, at the moment of the event. */
+ * TWAI_HAL_EVENT_ARB_LOST in one place), and of a real error it passes on
+ * four flags: bit, stuff, form, and "other in the ACK slot" as ack. The
+ * controller knows more. Its error code capture register holds the type,
+ * the direction (were we sending or receiving) and the segment of the
+ * frame, and the driver reads it, keeps the type, and drops the rest; a CRC
+ * error, which is type "other" in the CRC segment, comes through with no
+ * flag at all. Reading the register again here is safe: it keeps its content
+ * until the next error, the driver's read only re-arms it. One test setup
+ * showed 148 errors of which the flags named 6 (ioBroker.e3oncan #262);
+ * the direction is what tells a damaged signal at our input from a frame
+ * of ours that went wrong. */
 static bool IRAM_ATTR on_error(twai_node_handle_t handle,
                                const twai_error_event_data_t *edata,
                                void *user_ctx)
@@ -155,22 +165,76 @@ static bool IRAM_ATTR on_error(twai_node_handle_t handle,
     (void)handle;
     (void)user_ctx;
     twai_error_flags_t f = edata->err_flags;
+    if (f.arb_lost && !f.bit_err && !f.form_err && !f.stuff_err && !f.ack_err) {
+        /* Arbitration alone: the capture register still holds the previous
+         * error and must not be read as this one. An "other" error in the
+         * same interrupt is lost here; that combination is rare enough. */
+        stats.arb_lost++;
+        return false;
+    }
     if (f.arb_lost) {
         stats.arb_lost++;
     }
-    if (f.bit_err) {
-        stats.bit_errors++;
+    twai_ll_err_type_t type;
+    twai_ll_err_dir_t dir;
+    twai_ll_err_seg_t seg;
+    twai_ll_parse_err_code_cap(TWAI_LL_GET_HW(0), &type, &dir, &seg);
+
+    if (dir == TWAI_LL_ERR_DIR_RX) {
+        stats.rx_errors++;
+    } else {
+        stats.tx_errors++;
     }
-    if (f.stuff_err) {
-        stats.stuff_errors++;
-    }
-    if (f.form_err) {
-        stats.form_errors++;
-    }
-    if (f.ack_err) {
-        stats.ack_errors++;
+    stats.err_segments[seg & 0x1F]++;
+
+    switch (type) {
+    case TWAI_LL_ERR_BIT:   stats.bit_errors++;   break;
+    case TWAI_LL_ERR_FORM:  stats.form_errors++;  break;
+    case TWAI_LL_ERR_STUFF: stats.stuff_errors++; break;
+    default:
+        if (seg == TWAI_LL_ERR_SEG_CRC_SEQ || seg == TWAI_LL_ERR_SEG_CRC_DELIM) {
+            stats.crc_errors++;
+        } else if (seg == TWAI_LL_ERR_SEG_ACK_SLOT && dir == TWAI_LL_ERR_DIR_TX) {
+            stats.ack_errors++;
+        } else {
+            stats.other_errors++;
+        }
+        break;
     }
     return false;
+}
+
+/* The controller's segment codes, named for the status endpoint. Gaps are
+ * codes the controller does not produce. */
+const char *can_port_err_segment_name(int code)
+{
+    switch (code) {
+    case TWAI_LL_ERR_SEG_SOF:        return "sof";
+    case TWAI_LL_ERR_SEG_ID_28_21:
+    case TWAI_LL_ERR_SEG_ID_20_18:
+    case TWAI_LL_ERR_SEG_ID_17_13:
+    case TWAI_LL_ERR_SEG_ID_12_5:
+    case TWAI_LL_ERR_SEG_ID_4_0:     return "id";
+    case TWAI_LL_ERR_SEG_SRTR:
+    case TWAI_LL_ERR_SEG_RTR:        return "rtr";
+    case TWAI_LL_ERR_SEG_IDE:        return "ide";
+    case TWAI_LL_ERR_SEG_R0:
+    case TWAI_LL_ERR_SEG_R1:         return "reserved";
+    case TWAI_LL_ERR_SEG_DLC:        return "dlc";
+    case TWAI_LL_ERR_SEG_DATA:       return "data";
+    case TWAI_LL_ERR_SEG_CRC_SEQ:    return "crc";
+    case TWAI_LL_ERR_SEG_CRC_DELIM:  return "crcDelim";
+    case TWAI_LL_ERR_SEG_ACK_SLOT:   return "ackSlot";
+    case TWAI_LL_ERR_SEG_ACK_DELIM:  return "ackDelim";
+    case TWAI_LL_ERR_SEG_EOF:        return "eof";
+    case TWAI_LL_ERR_SEG_INTER:      return "intermission";
+    case TWAI_LL_ERR_SEG_ACT_FLAG:   return "activeErrorFlag";
+    case TWAI_LL_ERR_SEG_PASS_FLAG:  return "passiveErrorFlag";
+    case TWAI_LL_ERR_SEG_ERR_DELIM:  return "errorDelim";
+    case TWAI_LL_ERR_SEG_SUPERPOS:   return "superposition";
+    case TWAI_LL_ERR_SEG_OVRLD_FLAG: return "overloadFlag";
+    default:                         return NULL;
+    }
 }
 
 static bool hal_recv(void *ctx, uint32_t *id, uint8_t *data, uint8_t *len,

@@ -26,14 +26,19 @@ bis dahin auf der Flash-Seite lag.
   Zugriffe unter `rawRead` (gelesen, ohne Antwort, Fehler, geschrieben),
   die Statusseite zeigt sie als „Raw-Reads extern". `rawApiVersion` bleibt
   `1`.
-- **Busfehler nach Art** auf der Karte „CAN-Bus": Bit, Stuff, Form und
-  ACK getrennt gezählt, dazu „Arbitrierung verloren" als eigene Zeile. Der
+- **Busfehler nach Art, Richtung und Stelle** auf der Karte „CAN-Bus":
+  CRC, Bit, Stuff, Form, ACK und andere getrennt gezählt, dazu „Arbitrierung
+  verloren" als eigene Zeile, „Fehler beim Empfang / Senden" und die
+  Stelle im Frame, an der der Controller den Fehler sah. Die Firmware liest
+  dafür das Fehlerregister des Controllers selbst; der ESP-IDF-Treiber
+  reicht nur vier Flags weiter und lässt CRC-Fehler ganz weg. Der
   ESP-IDF-Treiber zählt verlorene Arbitrierung in seiner Fehlersumme mit,
   obwohl es kein Fehler ist, sondern ein anderer Knoten, der im selben Bit
   angefangen hat; es kann nur passieren, während das Gerät selbst sendet.
   Die bisherige Summe „Busfehler" stieg deshalb genau dann, wenn der Poller
   lief, und sah nach Verkabelung aus. `/api/status` liefert `arbLost`,
-  `bitErrors`, `stuffErrors`, `formErrors`, `ackErrors` und `txRetries`
+  `crcErrors`, `bitErrors`, `stuffErrors`, `formErrors`, `ackErrors`,
+  `otherErrors`, `rxErrors`, `txErrors`, `errSegments` und `txRetries`
   neben dem unveränderten `busErrors`.
 - **Frames verpasst** auf der Karte „CAN-Bus": Frames, die der
   Empfangs-Interrupt nicht mehr ablegen konnte, bisher nur in `/api/status`

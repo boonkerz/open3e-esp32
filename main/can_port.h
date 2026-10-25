@@ -38,7 +38,18 @@ typedef struct {
     uint32_t bit_errors;
     uint32_t stuff_errors;
     uint32_t form_errors;
-    uint32_t ack_errors;
+    uint32_t crc_errors;       /* the controller files these under "other" */
+    uint32_t ack_errors;       /* while transmitting: nobody acknowledged */
+    uint32_t other_errors;     /* "other" anywhere else in the frame */
+    /* Which side of the exchange the controller was on when it saw the
+     * error. Receive errors are frames from the other node that arrived
+     * damaged and were repeated by it; transmit errors are our own frames,
+     * and those the firmware repeats itself. */
+    uint32_t rx_errors;
+    uint32_t tx_errors;
+    /* Where in the frame the error was seen, indexed by the controller's
+     * segment code (0..31); the status endpoint names the nonzero ones. */
+    uint32_t err_segments[32];
     uint32_t tx_retries;       /* frames sent again after the first attempt
                                   failed (lost arbitration or a bus error);
                                   tx_failed counts the ones that never went */
@@ -59,6 +70,9 @@ typedef struct {
 bool can_port_start(void);
 void can_port_stop(void);
 void can_port_stats(can_stats_t *out);
+/* JSON key for an entry of err_segments, NULL for a code the controller
+ * never produces. Several ID segments share one name. */
+const char *can_port_err_segment_name(int code);
 
 /* ------------------------------------------------------------------ */
 /* Diagnostics                                                          */

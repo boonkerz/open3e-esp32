@@ -81,6 +81,8 @@
       <div class="kv"><div class="k">Fehlerzähler TX / RX</div><div class="v" id="s-errcnt">–</div></div>
       <div class="kv"><div class="k">Sendewiederholungen</div><div class="v" id="s-txretry">–</div></div>
       <div class="kv"><div class="k">Frames verpasst</div><div class="v" id="s-rxmissed">–</div></div>
+      <div class="kv"><div class="k">Fehler beim Empfang / Senden</div><div class="v" id="s-errdir">–</div></div>
+      <div class="kv"><div class="k">Fehlerstelle im Frame</div><div class="v" id="s-errseg">–</div></div>
       <div class="kv"><div class="k">Bus-Off-Recovery</div><div class="v" id="s-recov">–</div></div>
       <div class="kv"><div class="k">Bus belegt von</div><div class="v" id="s-holder">–</div></div>
     </div>
@@ -88,7 +90,10 @@
       <b>TX-Fehlerzähler steigt, RX bleibt 0</b> heißt: gesendet, aber niemand
       quittiert — auf CAN quittiert jeder andere aktive Knoten jedes Frame.
       <b>Busfehler</b> zählt echte Leitungsfehler seit dem Start, nach Art
-      aufgeschlüsselt. <b>Arbitrierung verloren</b> ist kein Fehler: ein anderer
+      aufgeschlüsselt. <b>Fehler beim Empfang</b> sind Frames der Gegenstelle,
+      die beschädigt ankamen und von ihr wiederholt wurden, also ein Blick auf
+      den Signalweg zum Eingang dieses Boards; <b>beim Senden</b> sind es
+      eigene Frames, die die Firmware wiederholt. <b>Arbitrierung verloren</b> ist kein Fehler: ein anderer
       Knoten hat im selben Bit angefangen und gewonnen, das Frame wird
       wiederholt; es kann nur passieren, während das Gerät selbst sendet.
       <b>TX / RX</b> sind die Live-Zähler des Controllers, sie springen bei

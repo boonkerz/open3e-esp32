@@ -302,13 +302,53 @@ static esp_err_t h_status(httpd_req_t *r)
              "\"can\": {\"state\": \"%s\", \"txFailed\": %u, \"txRetries\": %u, "
              "\"rxMissed\": %u, \"busErrors\": %u, \"arbLost\": %u, "
              "\"bitErrors\": %u, \"stuffErrors\": %u, \"formErrors\": %u, "
-             "\"ackErrors\": %u, \"txErrCount\": %u, \"rxErrCount\": %u, "
-             "\"recoveries\": %u, \"holder\": \"%s\", \"heldMs\": %u}, ",
+             "\"crcErrors\": %u, \"ackErrors\": %u, \"otherErrors\": %u, "
+             "\"rxErrors\": %u, \"txErrors\": %u, ",
              can.state ? can.state : "stopped", (unsigned)can.tx_failed,
              (unsigned)can.tx_retries, (unsigned)can.rx_missed,
              (unsigned)can.bus_errors, (unsigned)can.arb_lost,
              (unsigned)can.bit_errors, (unsigned)can.stuff_errors,
-             (unsigned)can.form_errors, (unsigned)can.ack_errors,
+             (unsigned)can.form_errors, (unsigned)can.crc_errors,
+             (unsigned)can.ack_errors, (unsigned)can.other_errors,
+             (unsigned)can.rx_errors, (unsigned)can.tx_errors);
+    o3e_buf_adds(&b, t);
+    /* Where in the frame the errors were seen; only segments that occurred,
+     * and segments sharing a name (the ID bits) summed. */
+    o3e_buf_adds(&b, "\"errSegments\": {");
+    {
+        bool first = true;
+        for (int code = 0; code < 32; code++) {
+            const char *name = can_port_err_segment_name(code);
+            if (!name || !can.err_segments[code]) {
+                continue;
+            }
+            /* Sum segments with the same name once, at their first code. */
+            bool seen = false;
+            for (int k = 0; k < code; k++) {
+                const char *other = can_port_err_segment_name(k);
+                if (other && strcmp(other, name) == 0 && can.err_segments[k]) {
+                    seen = true;
+                    break;
+                }
+            }
+            if (seen) {
+                continue;
+            }
+            unsigned total = 0;
+            for (int k = code; k < 32; k++) {
+                const char *other = can_port_err_segment_name(k);
+                if (other && strcmp(other, name) == 0) {
+                    total += can.err_segments[k];
+                }
+            }
+            snprintf(t, sizeof(t), "%s\"%s\": %u", first ? "" : ", ", name, total);
+            o3e_buf_adds(&b, t);
+            first = false;
+        }
+    }
+    snprintf(t, sizeof(t),
+             "}, \"txErrCount\": %u, \"rxErrCount\": %u, "
+             "\"recoveries\": %u, \"holder\": \"%s\", \"heldMs\": %u}, ",
              (unsigned)can.tx_err_count, (unsigned)can.rx_err_count,
              (unsigned)can.recovery_count, can.holder, (unsigned)can.held_ms);
     o3e_buf_adds(&b, t);
