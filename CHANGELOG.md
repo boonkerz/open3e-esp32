@@ -59,6 +59,19 @@ bis dahin auf der Flash-Seite lag.
 
 ### Behoben
 
+- **„Frames verpasst" zählte Broadcast-Frames mit.** Jedes Frame, das kein
+  Listener wollte, landete in der Warteschlange für UDS-Antworten, die nur
+  während einer Anfrage geleert wird. An einem echten Bus füllte sie der
+  Broadcast-Verkehr der Anlage, und jedes weitere Frame zählte als
+  verpasst: 34000 in zwei Stunden an einer Vitodens, ohne eine einzige
+  verlorene Antwort (ioBroker.e3oncan #262). Jetzt kommt nur noch die
+  Antwort der laufenden Anfrage in die Warteschlange, `rxMissed` zählt
+  allein diese.
+- **Fehlerstellen ohne Namen** erschienen gar nicht. Der Controller
+  meldet Segment-Codes, für die der Treiber-Header keinen Namen hat;
+  die fielen aus der Aufstellung heraus, sodass ihre Summe nicht zur
+  Zahl der Fehler passte. `errSegments` führt sie als `seg<Code>`, die
+  Karte als „Code <n>".
 - **Collect-Listener** gleicht die konfigurierten CAN-IDs exakt ab statt
   alles zwischen kleinster und größter ID zu nehmen (#10, MyHomeMyData).
   Vorher schluckte der Listener auch UDS-Anfragen und -Antworten, deren ID

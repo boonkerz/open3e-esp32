@@ -98,8 +98,10 @@
       wiederholt; es kann nur passieren, während das Gerät selbst sendet.
       <b>TX / RX</b> sind die Live-Zähler des Controllers, sie springen bei
       einem Fehler hoch und bauen sich mit jedem fehlerfreien Frame wieder ab.
-      <b>Frames verpasst</b> sind die einzigen, die diese Firmware wirklich
-      verworfen hat.</p>
+      <b>Frames verpasst</b> sind Antworten auf eine laufende Anfrage, die
+      der Empfangs-Interrupt nicht mehr ablegen konnte, die einzigen, die
+      diese Firmware wirklich verworfen hat. Broadcast-Frames der Anlage,
+      die niemand angefordert hat, zählen nicht mit.</p>
     <div class="warnbox" style="margin-top:12px">
       <b>Busmasse an GND des Boards.</b> Die CAN-Klemme hat laut Schaltplan nur
       CANH und CANL — die Masse gehört an den Minus der DC-Klemme. Zwischen

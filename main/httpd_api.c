@@ -318,9 +318,16 @@ static esp_err_t h_status(httpd_req_t *r)
     {
         bool first = true;
         for (int code = 0; code < 32; code++) {
-            const char *name = can_port_err_segment_name(code);
-            if (!name || !can.err_segments[code]) {
+            if (!can.err_segments[code]) {
                 continue;
+            }
+            const char *name = can_port_err_segment_name(code);
+            char raw[8];
+            if (!name) {
+                /* A code the header has no name for: shown by number
+                 * so it is not silently missing from the sum. */
+                snprintf(raw, sizeof(raw), "seg%d", code);
+                name = raw;
             }
             /* Sum segments with the same name once, at their first code. */
             bool seen = false;

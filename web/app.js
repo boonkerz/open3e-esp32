@@ -215,7 +215,7 @@ function renderStatus(s) {
     };
     const segs = Object.entries(c.errSegments || {})
       .sort((a, b) => b[1] - a[1])
-      .map(([k, n]) => `${segNames[k] || k} ${n}`);
+      .map(([k, n]) => `${segNames[k] || (k.startsWith("seg") ? `Code ${k.slice(3)}` : k)} ${n}`);
     $("s-errseg").textContent = segs.length ? segs.join(", ") : "–";
   } else {
     $("s-buserr").textContent = c.busErrors;
@@ -227,8 +227,9 @@ function renderStatus(s) {
   /* TEC/REC climb long before the controller actually goes bus-off, so they
      are the earliest visible sign of a wiring or bitrate problem. */
   $("s-errcnt").textContent = `${s.can.txErrCount} / ${s.can.rxErrCount}`;
-  /* Frames the receive interrupt could not queue: the one counter on this
-     card that means data this firmware itself threw away. */
+  /* Replies of the running exchange the receive interrupt could not queue:
+     the one counter on this card that means data this firmware itself
+     threw away. Broadcast traffic is not queued and not counted. */
   const missed = $("s-rxmissed");
   missed.textContent = s.can.rxMissed;
   missed.style.color = s.can.rxMissed ? "var(--err)" : "";

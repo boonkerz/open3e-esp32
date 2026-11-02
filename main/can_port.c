@@ -69,6 +69,10 @@ static SemaphoreHandle_t  bus_lock;
 static char               bus_holder[16];
 static uint32_t           bus_taken_ms;
 static QueueHandle_t      rx_q;
+/* CAN ID the exchange in progress is waiting for, 0 when none is. Only
+ * that frame goes into rx_q; everything else the bus carries is broadcast
+ * traffic no task will ever read from the queue. */
+static volatile uint32_t  rx_want;
 static twai_node_handle_t node;
 static volatile bool      running;
 static can_stats_t        stats;
@@ -205,7 +209,9 @@ static bool IRAM_ATTR on_error(twai_node_handle_t handle,
 }
 
 /* The controller's segment codes, named for the status endpoint. Gaps are
- * codes the controller does not produce. */
+ * codes the header does not define; NULL for those, and the status
+ * endpoint shows them by number rather than dropping them -- a test setup
+ * produced errors whose segment was none of the named ones. */
 const char *can_port_err_segment_name(int code)
 {
     switch (code) {
@@ -331,6 +337,16 @@ static bool IRAM_ATTR on_rx_done(twai_node_handle_t handle,
     }
     if (matched) {
         return woken == pdTRUE;
+    }
+
+    /* Not for a listener, and not the reply the current exchange waits
+     * for: a broadcast frame nobody asked for. It used to be queued anyway,
+     * and since the queue is only drained during an exchange, on a real
+     * bus it filled with the installation's broadcast traffic and every
+     * frame after that counted as "missed" -- 34000 in two hours at a
+     * Vitodens (ioBroker.e3oncan #262) without a single lost reply. */
+    if (frame.header.id != rx_want) {
+        return false;
     }
 
     rx_frame_t f = { .id = frame.header.id, .len = dlc };
@@ -567,6 +583,7 @@ bool can_diag_loopback(char *err, size_t err_sz)
     }
 
     xQueueReset(rx_q);
+    rx_want = 0x7FF;
     uint8_t payload[8] = { 0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04 };
     twai_frame_t tx = {
         .header = { .id = 0x7FF, .dlc = sizeof(payload) },
@@ -586,6 +603,7 @@ bool can_diag_loopback(char *err, size_t err_sz)
                  "firmware or pin configuration problem, not the wiring");
     }
 
+    rx_want = 0;
     node_destroy();
     diag_release_bus();
     return ok;
@@ -739,6 +757,7 @@ static uds_result_t with_bus(uint16_t ecu_tx, bool is_write, uint16_t did,
     /* Drain stale frames so this exchange never reads a previous session's
      * leftovers; a timed-out request can leave consecutive frames queued. */
     flush_rx();
+    rx_want = UDS_RX_OF(ecu_tx);
 
     /* Tell the tracer this traffic is ours, so it can be excluded. */
     cantrace_own_begin(ecu_tx);
@@ -763,6 +782,7 @@ static uds_result_t with_bus(uint16_t ecu_tx, bool is_write, uint16_t did,
                  (unsigned)took, uds_strerror(r));
     }
 
+    rx_want = 0;
     cantrace_own_end();
     update_stats();
     bus_holder[0] = '\0';
