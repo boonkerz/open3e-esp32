@@ -31,6 +31,7 @@
 #include "ota.h"
 #include "poller.h"
 #include "raw_relay.h"
+#include "wg_link.h"
 
 static const char *TAG = "main";
 
@@ -113,6 +114,10 @@ void app_main(void)
      * Hold beenden wollen, und das darf nicht auf einen fehlenden Mutex
      * treffen. */
     hold_init();
+
+    /* Before net_prov_start(): the Wi-Fi event handler notifies this module
+     * when a station address arrives. */
+    wg_link_init();
 
     net_prov_start();
     httpd_api_start();

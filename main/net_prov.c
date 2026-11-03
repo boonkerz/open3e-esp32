@@ -20,6 +20,7 @@
 
 #include "app_config.h"
 #include "o3e_json.h"
+#include "wg_link.h"
 
 static const char *TAG = "net";
 
@@ -179,6 +180,9 @@ static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *da
         status.state = NET_STA_CONNECTING;
         status.ip[0] = '\0';
         status.retries++;
+        /* The tunnel's endpoint is no longer reachable; the task parks until
+         * the next address arrives instead of hammering the handshake. */
+        wg_link_network_down();
         /* Keep retrying indefinitely; the timeout above decides when the setup
          * AP is needed. Backing off a little avoids hammering a busy router. */
         vTaskDelay(pdMS_TO_TICKS(status.retries > NET_STA_RETRIES ? 5000 : 1000));
@@ -190,6 +194,9 @@ static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *da
         status.retries = 0;
         ESP_LOGI(TAG, "connected, ip %s", status.ip);
         start_time_sync();
+        /* WireGuard waits for this: its handshake timestamps come from the
+         * wall clock, and SNTP is what sets it. */
+        wg_link_network_up();
     }
 }
 

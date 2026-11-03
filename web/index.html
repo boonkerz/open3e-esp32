@@ -68,6 +68,7 @@
       <div class="kv"><div class="k">WLAN</div><div class="v" id="s-ssid">–</div></div>
       <div class="kv"><div class="k">IP-Adresse</div><div class="v mono" id="s-ip">–</div></div>
       <div class="kv"><div class="k">Signal</div><div class="v" id="s-rssi">–</div></div>
+      <div class="kv"><div class="k">WireGuard</div><div class="v" id="s-wg">–</div></div>
       <div class="kv"><div class="k">Laufzeit</div><div class="v" id="s-uptime">–</div></div>
       <div class="kv"><div class="k">Uhrzeit</div><div class="v" id="s-clock">–</div></div>
     </div>
@@ -526,6 +527,49 @@
       Discovery-Topics gelöscht, damit keine verwaisten Entitäten zurückbleiben.</p>
   </div>
 
+  <div class="card" id="card-wg">
+    <h2>WireGuard</h2>
+    <p class="hint">Baut einen Tunnel zu einem WireGuard-Server auf. Liegen
+      MQTT-Broker und der fernwartende Client im <b>Tunnel-Subnetz</b>, reicht
+      die Netzmaske (z.&nbsp;B. <span class="mono">10.6.0.2/24</span> mit
+      Client <span class="mono">10.6.0.1</span>): Weboberfläche, OTA und MQTT
+      laufen über den Tunnel, ohne dass das übrige Netz des Geräts umgeleitet
+      wird. Die <b>Standardroute</b> ist nur nötig, wenn der Client in einem
+      anderen Netz hinter dem Server liegt (etwa
+      <span class="mono">192.168.1.x</span>) oder das Gerät beliebige entfernte
+      Ziele erreichen soll. In beiden Fällen bleibt das lokale WLAN direkt
+      erreichbar; ein Tunnelausfall sperrt das Gerät nicht aus.
+      Endpunkt-Hostnamen werden noch über das WLAN-DNS aufgelöst — im Zweifel
+      eine IP eintragen.</p>
+    <label class="small"><input type="checkbox" id="wg-enabled"> WireGuard aktivieren</label>
+    <div class="row">
+      <label><span>Endpunkt (Host oder IP)</span><input type="text" id="wg-endpoint" placeholder="wg.example.net"></label>
+      <label style="flex:0 0 110px"><span>Port</span><input type="number" id="wg-port" value="51820" min="1" max="65535"></label>
+    </div>
+    <div class="row">
+      <label><span>Tunnel-Adresse</span><input type="text" id="wg-address" placeholder="10.6.0.2"></label>
+      <label><span>Netzmaske</span><input type="text" id="wg-netmask" value="255.255.255.0"></label>
+      <label style="flex:0 0 130px"><span>Keepalive (s)</span><input type="number" id="wg-keepalive" value="25" min="0" max="65535"></label>
+    </div>
+    <div class="row">
+      <label><span>Privater Schlüssel</span><input type="password" id="wg-priv" autocomplete="off" placeholder="unverändert"></label>
+      <label><span>Öffentlicher Schlüssel der Gegenstelle</span><input type="text" id="wg-pub" autocomplete="off"></label>
+    </div>
+    <label><span>Öffentlicher Schlüssel dieses Geräts (für die Gegenstelle)</span>
+      <input type="text" id="wg-self" readonly placeholder="wird aus dem privaten Schlüssel berechnet"></label>
+    <label><span>Preshared Key (optional)</span><input type="password" id="wg-psk" autocomplete="off" placeholder="unverändert"></label>
+    <label class="small" style="margin-top:10px"><input type="checkbox" id="wg-default" checked>
+      Standardroute: alles außerhalb des lokalen WLANs über den Tunnel senden
+      (nur für Clients außerhalb des Tunnel-Subnetzes nötig)</label>
+    <p class="hint" style="margin:8px 0 0">Die Schlüssel stehen im Klartext im NVS
+      und in einer Sicherung. Die Gegenstelle braucht die Tunnel-Adresse dieses
+      Geräts als <span class="mono">AllowedIPs</span>; auf dem Gerät ist
+      <span class="mono">0.0.0.0/0</span> als erlaubte Quelle eingetragen. Für
+      den Fernzugriff im Browser die Tunnel-Adresse verwenden, nicht
+      <span class="mono">open3e.local</span>. Zustand:
+      <span class="mono" id="wg-state">–</span></p>
+  </div>
+
   <div class="card" id="card-knx">
     <h2>KNX</h2>
     <p class="hint">Schickt beim Schalten eines Kontakteingangs ein 1-Bit-Telegramm
@@ -762,9 +806,10 @@
       Datenpunkt-Auswahl und wahlweise das Scan-Ergebnis — alles, um ein Gerät
       in denselben Zustand zu bringen.</p>
     <div class="warnbox">
-      <b>Die Datei enthält Passwörter</b> (WLAN, MQTT, Hotspot). Ohne sie ließe
-      sich das Gerät nach dem Wiederherstellen nicht erreichen, deshalb sind sie
-      drin. Entsprechend aufbewahren.
+      <b>Die Datei enthält Passwörter</b> (WLAN, MQTT, Hotspot) und die
+      WireGuard-Schlüssel. Ohne sie ließe sich das Gerät nach dem
+      Wiederherstellen nicht erreichen, deshalb sind sie drin. Entsprechend
+      aufbewahren.
     </div>
     <div class="row">
       <label style="flex:0 0 auto"><span>&nbsp;</span>

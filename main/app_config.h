@@ -23,6 +23,9 @@
 #define CFG_SSID_MAX     33
 #define CFG_PASS_MAX     64
 #define CFG_TOPIC_MAX   128
+/* A WireGuard key is 32 bytes in base64: 44 characters plus the terminator.
+ * 48 leaves room for a stray newline pasted along with it. */
+#define CFG_WG_KEY_MAX  48
 /* Sized for RAW_RELAY_MAX_IDS (raw_relay.h) comma-separated "0x7FF" entries:
  * 32 * strlen("0x7FF,") + 1, rounded up. CFG_STR_MAX is too small once a
  * caller relays both energy meters plus a handful of collect IDs. */
@@ -55,6 +58,28 @@ typedef struct {
     bool     ha_discovery;
     char     ha_prefix[CFG_TOPIC_MAX];    /* default "homeassistant" */
 } mqtt_cfg_t;
+
+typedef struct {
+    bool     enabled;
+    char     private_key[CFG_WG_KEY_MAX];
+    char     public_key[CFG_WG_KEY_MAX];
+    char     preshared_key[CFG_WG_KEY_MAX]; /* optional, empty = none */
+    char     endpoint[CFG_STR_MAX];        /* hostname or IPv4 address */
+    uint16_t port;                         /* default 51820 */
+    char     address[16];                  /* local tunnel IPv4 address */
+    char     netmask[16];                  /* connected route for the tunnel subnet */
+    uint16_t keepalive;                    /* seconds, 0 = off */
+    /* Send everything that is not on the local LAN through the tunnel.
+     *
+     * This is not required when the broker and the admin client are inside
+     * the tunnel subnet: the netmask already installs a connected route for
+     * that, and replies to a client there stay on the WireGuard interface.
+     * It is needed for a client in another network behind the WireGuard
+     * server (e.g. 192.168.1.x), or when the device must reach arbitrary
+     * remote destinations. The local Wi-Fi subnet still matches the Wi-Fi
+     * netif, so a broken tunnel cannot lock the device out of its own LAN. */
+    bool     default_route;
+} wg_cfg_t;
 
 typedef struct {
     /* Writing to a heat pump is off until deliberately enabled; a datapoint
@@ -112,6 +137,13 @@ bool wifi_cfg_present(void);         /* true once an SSID has been stored */
 
 void mqtt_cfg_get(mqtt_cfg_t *out);
 bool mqtt_cfg_set(const mqtt_cfg_t *in);
+
+void wg_cfg_get(wg_cfg_t *out);
+bool wg_cfg_set(const wg_cfg_t *in);
+/* Remove the stored WireGuard settings; the next wg_cfg_get() returns the
+ * built-in defaults (port 51820, /24 netmask, keepalive 25 s, default route
+ * on). */
+bool wg_cfg_clear(void);
 
 void sys_cfg_get(sys_cfg_t *out);
 bool sys_cfg_set(const sys_cfg_t *in);

@@ -34,6 +34,10 @@ void mqtt_pub_stop(void);
 void mqtt_pub_restart(void);      /* after a settings change */
 void mqtt_pub_stats(mqtt_stats_t *out);
 bool mqtt_pub_connected(void);
+/* True once a client object exists, independent of whether it is connected.
+ * The WireGuard task uses this to avoid starting a second client when the
+ * tunnel comes up before app_main has reached mqtt_pub_start(). */
+bool mqtt_pub_running(void);
 
 /* Expand the configured format string for one datapoint into a full topic.
  * Supports open3e's placeholders: {didNumber}, {didName}, {ecuAddr}, {device},
