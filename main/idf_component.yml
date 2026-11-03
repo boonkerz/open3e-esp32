@@ -7,6 +7,11 @@ dependencies:
     version: "^1.7.19"
   espressif/mqtt:
     version: "^1.0.0"
+  # Fetched from the ESP Component Registry, together with esphome/libsodium.
+  # The Allowed-IP array size that this firmware needs is set in
+  # main/Kconfig.projbuild; the registry component has no Kconfig of its own.
+  esphome/wireguard:
+    version: "^0.4.6"
   # LittleFS rather than SPIFFS: the storage partition holds a 1.6 MB database
   # plus small config files that are rewritten often, and SPIFFS handles neither
   # large files nor frequent rewrites well.
