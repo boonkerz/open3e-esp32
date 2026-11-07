@@ -19,18 +19,8 @@
 /* Longest "not found in <list>" message; the longest list name is 26 chars. */
 #define ENUM_MISS_MAX 64
 
-/* Compiled codec trees go to PSRAM.
- *
- * A tree is many small allocations -- nodes, ids, units, child arrays -- and
- * CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL sends everything below 16 KiB to
- * internal RAM. Every polled point keeps its own tree, so the selection grows
- * straight into the pool the Wi-Fi stack and the web server need: a
- * ZigBee<N>DeviceCurrentValues tree is about 8 KiB, and a few dozen of them
- * left the wifi task without memory. The trees are only read by the tasks
- * that decode, never from an ISR or by DMA.
- *
- * Memory from heap_caps_* is freed with the ordinary free(), so
- * o3e_codec_free() stays as it is. */
+/* Codec trees go to PSRAM; CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL would put
+ * these small allocations in internal RAM. */
 static void *node_calloc(size_t n, size_t size)
 {
 #ifdef ESP_PLATFORM
