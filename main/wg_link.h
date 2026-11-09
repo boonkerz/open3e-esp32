@@ -34,8 +34,10 @@ typedef struct {
     char error[96];
 } wg_link_status_t;
 
-/* Create the tunnel task and apply the stored configuration. Call before
- * net_prov_start() so the IP event can reach it. */
+/* Prepare the module and apply the stored configuration. The tunnel task is
+ * created only once WireGuard is enabled, so a device that never uses it
+ * pays nothing beyond the code in the image. Call before net_prov_start() so
+ * the IP events can reach a task that already exists. */
 void wg_link_init(void);
 
 /* From the Wi-Fi event handler. Both only notify; the work happens on the

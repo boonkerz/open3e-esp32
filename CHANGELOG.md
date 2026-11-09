@@ -25,7 +25,9 @@ bis dahin auf der Flash-Seite lag.
   Gegenstellen-Schlüssel und optional ein Preshared Key stehen im Web-UI;
   `/api/status` liefert Zustand, Endpunkt-IP und das Alter des letzten
   Handshakes. Die Schlüssel sind Teil der Sicherung, und „Alles außer WLAN"
-  löscht die WireGuard-Konfiguration mit.
+  löscht die WireGuard-Konfiguration mit. Solange WireGuard aus ist, läuft
+  kein Tunnel-Task; der Speicher dafür wird erst beim Einschalten belegt.
+  Die Standardroute ist per Vorgabe aus.
 - **Schaltausgänge** (#5, TheSmartGerman): GPIO1 und GPIO2 lassen sich je
   Pin als Ausgang betreiben, etwa für ein Relais an den SG-Ready-Klemmen.
   Zustand auf `<Basis>/output/<name>`, Befehl `ON`/`OFF` auf `…/set`, in

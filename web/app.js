@@ -1549,7 +1549,7 @@ async function loadSettings() {
   $("wg-address").value = wg.address || "";
   $("wg-netmask").value = wg.netmask || "255.255.255.0";
   $("wg-keepalive").value = wg.keepalive ?? 25;
-  $("wg-default").checked = wg.defaultRoute !== false;
+  $("wg-default").checked = wg.defaultRoute === true;
   $("wg-pub").value = wg.publicKey || "";
   $("wg-self").value = wg.devicePublicKey || "";
   $("wg-priv").value = "";

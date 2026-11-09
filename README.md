@@ -452,8 +452,8 @@ WLAN gehört, durch den Tunnel:
 
 | Standardroute | Wirkung |
 |---|---|
-| aus | Nur das Tunnel-Subnetz geht durch den Tunnel. Broker und Fernzugriff müssen darin liegen. |
-| **an** (Vorgabe) | Zusätzlich geht alles außerhalb des lokalen WLANs durch den Tunnel. Nötig, wenn der Client in einem anderen Netz hinter dem Server liegt (z. B. `192.168.1.x`) oder das Gerät beliebige entfernte Ziele erreichen soll; der Broker darf dann irgendwo im entfernten Netz liegen. |
+| **aus** (Vorgabe) | Nur das Tunnel-Subnetz geht durch den Tunnel. Broker und Fernzugriff müssen darin liegen. |
+| an | Zusätzlich geht alles außerhalb des lokalen WLANs durch den Tunnel. Nötig, wenn der Client in einem anderen Netz hinter dem Server liegt (z. B. `192.168.1.x`) oder das Gerät beliebige entfernte Ziele erreichen soll; der Broker darf dann irgendwo im entfernten Netz liegen. |
 
 Für die übliche Konfiguration mit Broker und Fernzugriff im Tunnel-Subnetz
 kann die Standardroute aus bleiben. Das lokale WLAN bleibt in beiden Fällen

@@ -328,6 +328,12 @@ static void wg_task(void *arg)
             time_waited = false;
             next_try_ms = wait_started_ms;
             teardown();
+            /* The task is created on the first enable, which can be long
+             * after the station got its address; ask instead of waiting for
+             * the next IP event. */
+            net_status_t ns;
+            net_prov_status(&ns);
+            net_up = ns.state == NET_STA_CONNECTED;
             xSemaphoreTake(lock, portMAX_DELAY);
             status.enabled = cfg.enabled;
             xSemaphoreGive(lock);
@@ -435,12 +441,6 @@ void wg_link_init(void)
     memset(&status, 0, sizeof(status));
     status.state = WG_LINK_DISABLED;
 
-    if (xTaskCreate(wg_task, "wireguard", 8192, NULL, 5, &task_h) != pdPASS) {
-        ESP_LOGE(TAG, "could not create the tunnel task");
-        task_h = NULL;
-        return;
-    }
-
     /* Same path as a settings change, so boot and save use one code path. */
     wg_link_restart();
 }
@@ -459,8 +459,29 @@ void wg_link_network_down(void)
     }
 }
 
+/* The task exists only once WireGuard has been enabled. Most installations
+ * never do, and its 8 KB stack would otherwise come out of the internal RAM
+ * that the codec trees and the Wi-Fi stack already compete for. Once created
+ * it stays: a later disable parks it on its notification instead of deleting
+ * it, which avoids racing a restart against the deletion. */
 void wg_link_restart(void)
 {
+    if (!lock) {
+        return;
+    }
+    wg_cfg_t c;
+    wg_cfg_get(&c);
+    xSemaphoreTake(lock, portMAX_DELAY);
+    status.enabled = c.enabled;
+    if (!task_h && c.enabled) {
+        if (xTaskCreate(wg_task, "wireguard", 8192, NULL, 5, &task_h) != pdPASS) {
+            ESP_LOGE(TAG, "could not create the tunnel task");
+            task_h = NULL;
+            status.state = WG_LINK_ERROR;
+            snprintf(status.error, sizeof(status.error), "kein Speicher fuer den Tunnel-Task");
+        }
+    }
+    xSemaphoreGive(lock);
     if (task_h) {
         xTaskNotify(task_h, WG_NOTIFY_APPLY, eSetBits);
     }

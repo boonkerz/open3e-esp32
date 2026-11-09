@@ -250,6 +250,11 @@ Die Raw-Zugriffe selbst werden gezählt, getrennt vom lokalen Poller
 Bus nicht frei). Die Statusseite zeigt die Zähler in der Karte „MQTT und
 Abfrage" als „Raw-Reads extern".
 
+`/api/status` trägt außerdem ein Objekt `wireguard` (`enabled`, `state`,
+`peerUp`, `handshakeAgeS`, `endpointIp`, `error`). Es gehört nicht zur
+Raw-API und ändert `rawApiVersion` nicht; ein Client, der den Status
+mitliest, kann es ignorieren.
+
 `version` ist die Release-Nummer aus `version.txt` (semantisch versioniert),
 `firmware` dieselbe Nummer mit dem Commit als Build-Metadatum (`-dirty`,
 wenn aus einem veränderten Arbeitsverzeichnis gebaut), `elfSha` die

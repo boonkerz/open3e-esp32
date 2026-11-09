@@ -142,7 +142,7 @@ void wg_cfg_get(wg_cfg_t *out);
 bool wg_cfg_set(const wg_cfg_t *in);
 /* Remove the stored WireGuard settings; the next wg_cfg_get() returns the
  * built-in defaults (port 51820, /24 netmask, keepalive 25 s, default route
- * on). */
+ * off). */
 bool wg_cfg_clear(void);
 
 void sys_cfg_get(sys_cfg_t *out);

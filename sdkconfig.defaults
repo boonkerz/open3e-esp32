@@ -74,9 +74,3 @@ CONFIG_LWIP_MAX_SOCKETS=16
 # while netif_add() sets the address. PPP itself is not used; the option only
 # selects the safe callback mode.
 CONFIG_LWIP_PPP_SUPPORT=y
-
-# WireGuard keeps allowed addresses in a fixed-size array. The device's own
-# tunnel address takes one slot; reaching any remote host needs at least one
-# more, and this firmware adds 0.0.0.0/0 (the ESPHome default) so that traffic
-# in both directions can use whatever the tunnel netmask routes.
-CONFIG_WIREGUARD_MAX_SRC_IPS=4

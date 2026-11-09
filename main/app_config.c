@@ -245,7 +245,10 @@ static const wg_cfg_t WG_DEFAULTS = {
     .port = 51820,
     .netmask = "255.255.255.0",
     .keepalive = 25,
-    .default_route = true,
+    /* Off: the connected route is enough for broker and client in the tunnel
+     * subnet, and a default route into a tunnel that is down stalls NTP and
+     * every other outbound connection until the key expires. */
+    .default_route = false,
 };
 
 void wg_cfg_get(wg_cfg_t *out)
@@ -265,7 +268,7 @@ void wg_cfg_get(wg_cfg_t *out)
     nvs_get_str_or(h, "wg_mask", out->netmask, sizeof(out->netmask),
                    WG_DEFAULTS.netmask);
     out->keepalive = nvs_get_u16_or(h, "wg_ka", WG_DEFAULTS.keepalive);
-    out->default_route = nvs_get_u8_or(h, "wg_def", 1) != 0;
+    out->default_route = nvs_get_u8_or(h, "wg_def", 0) != 0;
     nvs_close(h);
 }
 
