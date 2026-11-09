@@ -11,12 +11,47 @@
 
 #ifdef ESP_PLATFORM
 #include "cJSON.h"
+#include "esp_heap_caps.h"
 #else
 #include <cjson/cJSON.h>
 #endif
 
 /* Longest "not found in <list>" message; the longest list name is 26 chars. */
 #define ENUM_MISS_MAX 64
+
+/* Codec trees go to PSRAM; CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL would put
+ * these small allocations in internal RAM. */
+static void *node_calloc(size_t n, size_t size)
+{
+#ifdef ESP_PLATFORM
+    void *p = heap_caps_calloc(n, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (p) {
+        return p;
+    }
+#endif
+    return calloc(n, size);   /* boards without PSRAM keep working */
+}
+
+static void *node_realloc(void *ptr, size_t size)
+{
+#ifdef ESP_PLATFORM
+    void *p = heap_caps_realloc(ptr, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (p) {
+        return p;
+    }
+#endif
+    return realloc(ptr, size);
+}
+
+static char *node_strdup(const char *s)
+{
+    size_t n = strlen(s) + 1;
+    char *p = node_calloc(1, n);
+    if (p) {
+        memcpy(p, s, n);
+    }
+    return p;
+}
 
 /* ------------------------------------------------------------------ */
 /* Compile: JSON codec description -> node tree                         */
@@ -66,7 +101,7 @@ static char *dup_str(const cJSON *o, const char *key)
     if (!cJSON_IsString(v) || !v->valuestring || !v->valuestring[0]) {
         return NULL;
     }
-    return strdup(v->valuestring);
+    return node_strdup(v->valuestring);
 }
 
 static double num_or(const cJSON *o, const char *key, double dflt)
@@ -89,7 +124,7 @@ static bool bool_or(const cJSON *o, const char *key, bool dflt)
 
 static bool add_kid(o3e_node_t *n, o3e_node_t *kid)
 {
-    o3e_node_t **k = realloc(n->kids, sizeof(*k) * (n->n_kids + 1));
+    o3e_node_t **k = node_realloc(n->kids, sizeof(*k) * (n->n_kids + 1));
     if (!k) {
         o3e_codec_free(kid);
         return false;
@@ -109,7 +144,7 @@ o3e_node_t *o3e_codec_compile_cjson(const cJSON *jn)
         return NULL;
     }
 
-    o3e_node_t *n = calloc(1, sizeof(*n));
+    o3e_node_t *n = node_calloc(1, sizeof(*n));
     if (!n) {
         return NULL;
     }
@@ -163,8 +198,8 @@ o3e_node_t *o3e_codec_compile_cjson(const cJSON *jn)
                     o3e_codec_free(n);
                     return NULL;
                 }
-                int32_t *cv = realloc(n->case_vals, sizeof(int32_t) * n->n_kids);
-                bool *cd = realloc(n->case_default, sizeof(bool) * n->n_kids);
+                int32_t *cv = node_realloc(n->case_vals, sizeof(int32_t) * n->n_kids);
+                bool *cd = node_realloc(n->case_default, sizeof(bool) * n->n_kids);
                 if (!cv || !cd) {
                     free(cv);
                     free(cd);
@@ -184,8 +219,8 @@ o3e_node_t *o3e_codec_compile_cjson(const cJSON *jn)
                 o3e_codec_free(n);
                 return NULL;
             }
-            int32_t *cv = realloc(n->case_vals, sizeof(int32_t) * n->n_kids);
-            bool *cd = realloc(n->case_default, sizeof(bool) * n->n_kids);
+            int32_t *cv = node_realloc(n->case_vals, sizeof(int32_t) * n->n_kids);
+            bool *cd = node_realloc(n->case_default, sizeof(bool) * n->n_kids);
             if (!cv || !cd) {
                 free(cv);
                 free(cd);
@@ -206,7 +241,7 @@ o3e_node_t *o3e_codec_compile_cjson(const cJSON *jn)
 
 o3e_node_t *o3e_codec_raw(uint16_t len, const char *id)
 {
-    o3e_node_t *n = calloc(1, sizeof(*n));
+    o3e_node_t *n = node_calloc(1, sizeof(*n));
     if (!n) {
         return NULL;
     }
@@ -214,7 +249,7 @@ o3e_node_t *o3e_codec_raw(uint16_t len, const char *id)
     n->len = len;
     n->scale = 1.0;
     n->acc = O3E_ACC_RO;   /* writing bytes we cannot interpret is not offered */
-    n->id = id ? strdup(id) : NULL;
+    n->id = id ? node_strdup(id) : NULL;
     return n;
 }
 
