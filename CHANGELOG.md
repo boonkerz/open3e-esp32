@@ -65,6 +65,13 @@ bis dahin auf der Flash-Seite lag.
 
 ### Behoben
 
+- **Codec-Bäume liegen im PSRAM** (#20, konairius). Die kompilierten
+  Datenpunkt-Beschreibungen jedes Poll-Punkts lagen im internen RAM, weil
+  kleine Allokationen dort landen; mit 29 ZigBee-Punkten zu je etwa 8 KB
+  blieben 16 Byte frei und der WLAN-Task stürzte ab, während der PSRAM
+  leer war. Knoten, Namen und Kindlisten kommen jetzt aus dem PSRAM, ohne
+  PSRAM greift der Standard-Heap. Mit 91 UDS- und 7 E380-Punkten steigt
+  der freie interne Speicher von 108 auf 137 KB.
 - **Doku zur Masse war falsch.** README, Statusseite und die Texte unter
   `docs/` behaupteten, R31 überbrücke die galvanische Trennung und die
   Board-Masse sei der CAN-Bezugspunkt, der an die Busmasse müsse. Laut
