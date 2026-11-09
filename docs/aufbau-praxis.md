@@ -45,12 +45,14 @@ Leitungsschutzschalter. Die Stromversorgung für das Netzteil kommt vom
 Anschlusskasten der Heizung. Oben die beiden Klemmleisten der Verteilung,
 die linke ist als **CAN-GND** beschriftet.
 
-Wie in der README beschrieben muss die Busmasse mit der Board-Masse verbunden
-werden. Das erledigt hier die linke Klemmleiste: dort treffen sich GND des
-Boards, der Minuspol des Netzteils und die GND-Ader zum Stecker 91. Verdrahtet
-ist alles mit einem Rest Patchkabel. Für die GND-Verbindung wurden zwei Adern
-genommen, für CAN-L und CAN-H eines der verdrillten Paare, hier orange und
-orange-weiß.
+Auf der linken Klemmleiste treffen sich GND des Boards, der Minuspol des
+Netzteils und die GND-Ader zum Stecker 91. Diese Masseverbindung stammt aus
+einer früheren Fassung der README, die R31 als Brücke zwischen Board-Masse
+und CAN-Masse las. Nach dem Schaltplan ist der CAN-Teil galvanisch getrennt,
+die Verbindung erreicht den Transceiver nicht und ist für den Bus wirkungslos
+(Issue #14). Sie schadet nicht, nötig ist sie aber nicht; die GND-Ader zum
+Stecker 91 kann entfallen. Verdrahtet ist alles mit einem Rest Patchkabel,
+für CAN-L und CAN-H eines der verdrillten Paare, hier orange und orange-weiß.
 
 Als Schaltbild:
 
@@ -101,8 +103,8 @@ drücken:
 
 ![Busdiagnose in der Weboberfläche](img/aufbau/web-busdiagnose.png)
 
-Zeigt sie Fehler, stimmt die Verkabelung noch nicht, meist die Masse oder der
-Abschluss. Erst dann den **Bus-Scan** auf dem Reiter *System* starten; er
+Zeigt sie Fehler, stimmt die Verkabelung noch nicht, meist der Abschluss oder
+vertauschte Adern. Erst dann den **Bus-Scan** auf dem Reiter *System* starten; er
 dauert einige Minuten:
 
 ![Bus-Scan auf dem Reiter System](img/aufbau/web-busscan.png)

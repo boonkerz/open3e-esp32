@@ -4,12 +4,11 @@ Eine Firmware, die E3-Geräte direkt am CAN-Bus ausliest und nach MQTT bringt �
 auf einem Board für rund 20 €, das an 7–36 V direkt im Heizungsraum läuft.
 Kein Raspberry Pi, kein Python, kein SocketCAN.
 
-Zur Masse: das Board sieht eine galvanische Trennung vor, überbrückt sie aber
-im Auslieferungszustand mit **R31, einem 0-Ω-Widerstand**. Die Board-Masse ist
-damit der CAN-Bezugspunkt und muss an die Busmasse — ohne sie steigt der
-TX-Fehlerzähler, während RX bei null bleibt. Hängt das Board am USB eines
-geerdeten Rechners, verbindet man zwei Erdungspunkte; dann vorher auf ein
-eigenes Netzteil wechseln.
+Zur Masse: der CAN-Teil des Boards ist galvanisch getrennt, die CAN-Klemme hat
+nur CAN-H und CAN-L. R31 (0 Ω) verbindet die CAN-Masse laut Schaltplan nur
+mit dem Ableitpunkt der RS485-Schutzdioden, nicht mit GND des Boards. Eine
+Busmasse an GND erreicht den Transceiver also nicht; am Stecker 91 werden nur
+CAN-H und CAN-L belegt, wie es auch die Viessmann-Anleitung vorsieht.
 
 Projektseite: <https://github.com/boonkerz/open3e-esp32>
 

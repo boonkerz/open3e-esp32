@@ -31,34 +31,34 @@ Home-Assistant-Template läuft unverändert weiter.
 
 Modul ESP32-S3-WROOM-1, 16 MB Flash, 8 MB PSRAM. Bus mit **250 kBit/s**.
 
-**Verkabelung.** CAN-H und CAN-L an den E3-Bus — und die Busmasse an **GND des
-Boards**. Wie das in einer Unterverteilung neben der Heizung aussieht, mit
-Fotos, Schaltbild und einem bezahlbaren Stecker für die gelbe Buchse 91:
+**Verkabelung.** CAN-H und CAN-L an den E3-Bus, sonst nichts: die CAN-Klemme
+hat keinen Massekontakt, und der CAN-Teil des Boards ist galvanisch getrennt.
+Wie das in einer Unterverteilung neben der Heizung aussieht, mit Fotos,
+Schaltbild und einem bezahlbaren Stecker für die gelbe Buchse 91:
 [`docs/aufbau-praxis.md`](docs/aufbau-praxis.md).
 
 Aus dem [Schaltplan](https://files.waveshare.com/wiki/ESP32-S3-RS485-CAN/ESP32-S3-RS485-CAN-Schematic.pdf):
 
 - Die CAN-Klemme `J5` ist **zweipolig**: nur CANH und CANL. Es gibt dort keine
   eigene Masseklemme.
-- Transceiver ist ein **TJA1051T/3**, die Trennung liefert ein
-  **B0505LS-1W** DC-DC-Wandler.
-- Zwischen der Logikmasse `GND` und der CAN-seitigen Masse `SGND` sitzt aber
-  **R31, ein 0-Ω-Widerstand**. Die galvanische Trennung ist also als Option
-  vorgesehen und im Auslieferungszustand überbrückt.
+- Transceiver ist ein **TJA1051T/3**, die Signale laufen über den
+  Digital-Isolator **π163E31**, die Versorgung der getrennten Seite liefert
+  ein **B0505LS-1W** DC-DC-Wandler.
+- **R31, ein 0-Ω-Widerstand**, verbindet die CAN-seitige Masse `SGND` mit
+  `EARTH`, dem Ableitpunkt der RS485-Schutzdioden. Mit der Logikmasse `GND`
+  hat er nichts zu tun. Die galvanische Trennung ist also wirksam, die
+  CAN-Seite hat keine Masseklemme und keinen Bezug zur Board-Masse.
 
-Daraus folgt: die Board-Masse *ist* der CAN-Bezugspunkt. Ohne sie fehlt dem
-Bus der gemeinsame Bezug, das Gleichtaktpotential kann aus dem zulässigen
-Bereich des Transceivers driften, und man sieht auf der Statusseite einen
-steigenden TX-Fehlerzähler bei RX = 0 — gesendet, aber niemand quittiert.
+Daraus folgt: Eine Busmasse an GND oder am Minus der DC-Klemme erreicht den
+Transceiver nicht, sie ist für den CAN-Teil wirkungslos. Das deckt sich mit
+der Viessmann-Anleitung, am Stecker 91 nur CAN-H und CAN-L zu belegen.
 
-> Gegenprobe, falls es damit nicht läuft: Durchgangsprüfer zwischen dem Minus
-> der DC-Klemme und **Pin 2 des TJA1051** (dessen GND). Piept es, ist R31
-> bestückt und die Board-Masse der richtige Anschlusspunkt. Kein Durchgang
-> heißt, die Trennung ist auf diesem Exemplar tatsächlich offen.
-
-Hängt das Board an einem eigenen Netzteil an der DC-Klemme, ist das Anklemmen
-unkritisch. Hängt es am USB eines geerdeten Rechners, verbindet man zwei
-Erdungspunkte — dann besser vorher auf ein separates Netzteil wechseln.
+> Frühere Fassungen dieser README behaupteten, R31 überbrücke die Trennung und
+> die Board-Masse sei der CAN-Bezugspunkt. Das war eine Fehllesung des
+> Schaltplans, korrigiert nach Issue #14. Ob der fehlende Massebezug der
+> isolierten Seite zu den Busfehlern beiträgt, die Nutzer dieses Boards sehen,
+> wird in ioBroker.e3oncan #262 untersucht; die Bus-Diagnose zählt dafür die
+> Fehler beim reinen Mithören.
 
 Den 120-Ω-Jumper nur auf `120R` setzen, wenn das Gerät physisch am Busende
 sitzt — sonst auf `NC`. Zwei Abschlusswiderstände zu viel legen den Bus lahm,
@@ -137,13 +137,20 @@ Auf der Statusseite. Zwei Tests, die zusammen sagen, wo es klemmt:
 | Ergebnis | Bedeutung |
 |---|---|
 | Loopback fehlgeschlagen | Firmware/Pins |
-| Loopback ok, 0 Frames auf allen Bitraten | CAN-Masse fehlt, CAN-H/L vertauscht, falscher Strang, oder niemand sendet |
+| Loopback ok, 0 Frames auf allen Bitraten | CAN-H/L vertauscht, falscher Strang, oder niemand sendet |
 | Frames bei anderer Bitrate | Bus läuft nicht mit 250 kBit/s |
 | Frames bei 250 kBit/s | Empfang ok — steigt TX trotzdem, fehlt die Quittung |
 
 **TEC steigt, REC bleibt 0** ist dabei die aussagekräftigste Einzelbeobachtung:
 auf CAN quittiert jeder andere aktive Knoten jedes Frame, also heißt das
 „gesendet, niemand da".
+
+Die Tabelle des Sweeps zeigt je Bitrate auch die **Busfehler in 2 s**. Im
+Listen-Only-Modus treibt der Controller nichts auf den Bus, nicht einmal das
+ACK-Bit. Fehler, die er dabei sieht, liegen auf der Leitung oder im
+Empfangsweg. Zählt die Karte „CAN-Bus" im Normalbetrieb Fehler, die beim
+Mithören ausbleiben, entstehen sie erst durch das eigene Treiben des Geräts,
+etwa beim Quittieren; das trennt ein Problem der Leitung von einem des Moduls.
 
 Der Empfangs-Interrupt gibt einen angeforderten Task-Wechsel an den
 TWAI-Treiber **zurück**, statt ihn selbst auszulösen: ein `portYIELD_FROM_ISR()`

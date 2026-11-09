@@ -40,6 +40,12 @@ bis dahin auf der Flash-Seite lag.
   `crcErrors`, `bitErrors`, `stuffErrors`, `formErrors`, `ackErrors`,
   `otherErrors`, `rxErrors`, `txErrors`, `errSegments` und `txRetries`
   neben dem unveränderten `busErrors`.
+- **Bus-Diagnose zählt Busfehler beim Mithören.** Der Listen-Only-Sweep
+  zeigt je Bitrate, wie viele Busfehler der Controller in den 2 s sah, in
+  denen er nichts auf den Bus treibt, nicht einmal das ACK-Bit. Fehler, die
+  dort auftreten, liegen auf der Leitung oder im Empfangsweg; Fehler, die
+  nur im Normalbetrieb zählen, entstehen durch das eigene Treiben des
+  Geräts. `/api/candiag` liefert je Bitrate `errors`.
 - **Frames verpasst** auf der Karte „CAN-Bus": Frames, die der
   Empfangs-Interrupt nicht mehr ablegen konnte, bisher nur in `/api/status`
   als `rxMissed`. Die Karte erklärt außerdem, was Busfehler, TX/RX und
@@ -59,6 +65,19 @@ bis dahin auf der Flash-Seite lag.
 
 ### Behoben
 
+- **Doku zur Masse war falsch.** README, Statusseite und die Texte unter
+  `docs/` behaupteten, R31 überbrücke die galvanische Trennung und die
+  Board-Masse sei der CAN-Bezugspunkt, der an die Busmasse müsse. Laut
+  Schaltplan verbindet R31 die CAN-Masse `SGND` nur mit `EARTH`, dem
+  Ableitpunkt der RS485-Schutzdioden; der CAN-Teil ist getrennt, eine
+  Busmasse an GND erreicht den Transceiver nicht (#14, Ersthelfer). Die
+  Anleitung lautet jetzt: nur CAN-H und CAN-L anschließen.
+- **„Frames verpasst" zählte weiter**, wenn gerade keine Anfrage lief: die
+  Kennung für „keine Anfrage" war die CAN-ID 0, und eine Anlage sendete
+  Frames mit dieser ID. Der Leerwert ist jetzt eine ID, die kein Frame
+  tragen kann.
+- **Fehlerstellen ohne Namen** zeigten den Zähler 0, die Summenbildung fand
+  den Roh-Namen nicht wieder.
 - **„Frames verpasst" zählte Broadcast-Frames mit.** Jedes Frame, das kein
   Listener wollte, landete in der Warteschlange für UDS-Antworten, die nur
   während einer Anfrage geleert wird. An einem echten Bus füllte sie der

@@ -69,10 +69,13 @@ static SemaphoreHandle_t  bus_lock;
 static char               bus_holder[16];
 static uint32_t           bus_taken_ms;
 static QueueHandle_t      rx_q;
-/* CAN ID the exchange in progress is waiting for, 0 when none is. Only
- * that frame goes into rx_q; everything else the bus carries is broadcast
- * traffic no task will ever read from the queue. */
-static volatile uint32_t  rx_want;
+/* CAN ID the exchange in progress is waiting for, RX_WANT_NONE when none is.
+ * Only that frame goes into rx_q; everything else the bus carries is
+ * broadcast traffic no task will ever read from the queue. The idle value is
+ * one no frame can carry: an installation did send frames with ID 0, and
+ * with 0 as the idle value those were queued and counted as missed. */
+#define RX_WANT_NONE 0xFFFFFFFFu
+static volatile uint32_t  rx_want = RX_WANT_NONE;
 static twai_node_handle_t node;
 static volatile bool      running;
 static can_stats_t        stats;
@@ -168,6 +171,12 @@ static bool IRAM_ATTR on_error(twai_node_handle_t handle,
 {
     (void)handle;
     (void)user_ctx;
+    if (diag_armed) {
+        /* Listen-only sweep: count for the diagnosis, not for the bus card,
+         * so the two readings stay separable. */
+        diag_acc.errors++;
+        return false;
+    }
     twai_error_flags_t f = edata->err_flags;
     if (f.arb_lost && !f.bit_err && !f.form_err && !f.stuff_err && !f.ack_err) {
         /* Arbitration alone: the capture register still holds the previous
@@ -603,7 +612,7 @@ bool can_diag_loopback(char *err, size_t err_sz)
                  "firmware or pin configuration problem, not the wiring");
     }
 
-    rx_want = 0;
+    rx_want = RX_WANT_NONE;
     node_destroy();
     diag_release_bus();
     return ok;
@@ -632,8 +641,10 @@ bool can_diag_listen(const uint32_t *bitrates, size_t n, uint32_t ms_each,
         diag_armed = false;
 
         out[i] = diag_acc;
-        ESP_LOGI(TAG, "listen-only %u bit/s: %u frame(s), %u distinct ID(s)",
-                 (unsigned)bitrates[i], (unsigned)diag_acc.frames, diag_acc.n_ids);
+        ESP_LOGI(TAG, "listen-only %u bit/s: %u frame(s), %u distinct ID(s), "
+                 "%u bus error(s)",
+                 (unsigned)bitrates[i], (unsigned)diag_acc.frames, diag_acc.n_ids,
+                 (unsigned)diag_acc.errors);
         node_destroy();
     }
 
@@ -782,7 +793,7 @@ static uds_result_t with_bus(uint16_t ecu_tx, bool is_write, uint16_t did,
                  (unsigned)took, uds_strerror(r));
     }
 
-    rx_want = 0;
+    rx_want = RX_WANT_NONE;
     cantrace_own_end();
     update_stats();
     bus_holder[0] = '\0';

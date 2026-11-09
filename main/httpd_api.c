@@ -324,10 +324,16 @@ static esp_err_t h_status(httpd_req_t *r)
             const char *name = can_port_err_segment_name(code);
             char raw[8];
             if (!name) {
-                /* A code the header has no name for: shown by number
-                 * so it is not silently missing from the sum. */
+                /* A code the header has no name for: shown by number so it
+                 * is not silently missing. Nothing shares its name, so it
+                 * is emitted directly; the merge below would not find it
+                 * and showed it with a count of zero. */
                 snprintf(raw, sizeof(raw), "seg%d", code);
-                name = raw;
+                snprintf(t, sizeof(t), "%s\"%s\": %u", first ? "" : ", ",
+                         raw, (unsigned)can.err_segments[code]);
+                o3e_buf_adds(&b, t);
+                first = false;
+                continue;
             }
             /* Sum segments with the same name once, at their first code. */
             bool seen = false;
@@ -689,8 +695,10 @@ static esp_err_t h_candiag(httpd_req_t *r)
     o3e_buf_adds(&b, ", \"rates\": [");
 
     for (size_t i = 0; i < sizeof(rates) / sizeof(rates[0]); i++) {
-        snprintf(t, sizeof(t), "%s{\"bitrate\": %u, \"frames\": %u, \"ids\": [",
-                 i ? ", " : "", (unsigned)res[i].bitrate, (unsigned)res[i].frames);
+        snprintf(t, sizeof(t),
+                 "%s{\"bitrate\": %u, \"frames\": %u, \"errors\": %u, \"ids\": [",
+                 i ? ", " : "", (unsigned)res[i].bitrate, (unsigned)res[i].frames,
+                 (unsigned)res[i].errors);
         o3e_buf_adds(&b, t);
         for (uint8_t k = 0; k < res[i].n_ids; k++) {
             snprintf(t, sizeof(t), "%s\"0x%03X\"", k ? ", " : "",

@@ -103,12 +103,14 @@
       diese Firmware wirklich verworfen hat. Broadcast-Frames der Anlage,
       die niemand angefordert hat, zählen nicht mit.</p>
     <div class="warnbox" style="margin-top:12px">
-      <b>Busmasse an GND des Boards.</b> Die CAN-Klemme hat laut Schaltplan nur
-      CANH und CANL — die Masse gehört an den Minus der DC-Klemme. Zwischen
-      Logikmasse und CAN-Masse sitzt R31 (0 Ω), die Trennung ist also
-      überbrückt und die Board-Masse ist der Bezugspunkt. Fehlt er, driftet das
-      Gleichtaktpotential aus dem zulässigen Bereich des Transceivers; typisches
-      Bild ist dann ein steigender TX-Fehlerzähler bei RX = 0.
+      <b>Nur CANH und CANL anschließen.</b> Der CAN-Teil des Boards ist
+      galvanisch getrennt: R31 (0 Ω) verbindet die CAN-Masse SGND laut
+      Schaltplan nur mit dem Ableitpunkt der RS485-Schutzdioden, nicht mit GND
+      des Boards. Eine Busmasse an der DC-Klemme oder an GND erreicht den
+      Transceiver also gar nicht, und die CAN-Klemme hat keinen Massekontakt.
+      Das deckt sich mit der Anleitung von Viessmann, GND am Stecker 91 nicht
+      anzuschließen. Frühere Fassungen dieses Hinweises behaupteten, R31
+      überbrücke die Trennung; das war falsch (Issue #14).
     </div>
     <div class="row" style="margin-top:14px">
       <button class="btn" id="diag-run" style="flex:0 0 auto">Bus-Diagnose starten</button>

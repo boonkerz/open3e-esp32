@@ -90,6 +90,10 @@ typedef struct {
     uint32_t frames;                      /* frames seen at this bit rate */
     uint8_t  n_ids;
     uint32_t ids[CAN_DIAG_MAX_IDS];       /* distinct IDs, in order of arrival */
+    uint32_t errors;                      /* bus errors flagged while listening;
+                                           * in listen-only the node never
+                                           * acknowledges, so these cannot come
+                                           * from its own transmissions */
 } can_diag_t;
 
 /* Internal loopback: the controller transmits to itself with acknowledgement

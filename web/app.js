@@ -1721,10 +1721,23 @@ function initApp() {
                 + "das Senden; das deutet auf Abschlusswiderstand oder einen Bus, "
                 + "auf dem sonst kein aktiver Knoten hängt.";
       }
+      /* While listening the node never drives the bus, not even the ACK bit.
+         Errors seen here are on the wire or in the receive path; errors that
+         show on the bus card but not here come from the node's own driving. */
+      if (best && best.bitrate === 250000) {
+        verdict += best.errors
+          ? ` Beim reinen Mithören sah der Controller in 2 s ${best.errors} Busfehler. `
+            + "Die Störung liegt auf der Leitung oder im Empfangsweg, nicht am "
+            + "eigenen Senden dieses Geräts."
+          : " Beim reinen Mithören gab es in 2 s keinen Busfehler. Zählt die Karte "
+            + "im Normalbetrieb welche, entstehen sie erst, wenn dieses Gerät selbst "
+            + "auf den Bus treibt, und sei es nur das ACK-Bit.";
+      }
 
       const rows = (d.rates || []).map((r) =>
         `<tr><td class="mono">${r.bitrate / 1000} kBit/s</td>`
         + `<td class="num">${r.frames}</td>`
+        + `<td class="num">${r.errors ?? 0}</td>`
         + `<td class="mono small">${r.ids.length ? r.ids.join(", ") : "–"}</td></tr>`).join("");
 
       out.innerHTML =
@@ -1732,7 +1745,8 @@ function initApp() {
         + `${d.loopback ? "bestanden" : "fehlgeschlagen"}</p>`
         + `<div class="warnbox" style="margin-top:10px">${verdict}</div>`
         + '<div class="tablewrap"><table><thead><tr><th>Bitrate</th>'
-        + '<th class="num">Frames in 2 s</th><th>Gesehene CAN-IDs</th></tr></thead>'
+        + '<th class="num">Frames in 2 s</th><th class="num">Busfehler in 2 s</th>'
+        + '<th>Gesehene CAN-IDs</th></tr></thead>'
         + `<tbody>${rows}</tbody></table></div>`;
     } catch (e) {
       out.innerHTML = `<div class="warnbox">${e.message}</div>`;
