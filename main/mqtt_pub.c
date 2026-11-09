@@ -379,3 +379,4 @@ void mqtt_pub_restart(void)
 
 void mqtt_pub_stats(mqtt_stats_t *out) { *out = stats; }
 bool mqtt_pub_connected(void) { return stats.connected; }
+bool mqtt_pub_running(void) { return client != NULL; }

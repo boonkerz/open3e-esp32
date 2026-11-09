@@ -233,6 +233,82 @@ bool mqtt_cfg_set(const mqtt_cfg_t *in)
 }
 
 /* ------------------------------------------------------------------ */
+/* WireGuard                                                           */
+
+/* The netmask installs the connected route for the tunnel subnet, which is
+ * enough for a broker and an admin client in that subnet. `default_route`
+ * additionally sends everything outside the local LAN through the tunnel;
+ * it is only needed for clients in other remote networks or arbitrary
+ * destinations. 255.255.255.0 matching the usual wg0 network (10.x.x.0/24)
+ * is the useful default. */
+static const wg_cfg_t WG_DEFAULTS = {
+    .port = 51820,
+    .netmask = "255.255.255.0",
+    .keepalive = 25,
+    .default_route = true,
+};
+
+void wg_cfg_get(wg_cfg_t *out)
+{
+    *out = WG_DEFAULTS;
+    nvs_handle_t h;
+    if (nvs_open(NS, NVS_READONLY, &h) != ESP_OK) {
+        return;
+    }
+    out->enabled = nvs_get_u8_or(h, "wg_on", 0) != 0;
+    nvs_get_str_or(h, "wg_priv", out->private_key, sizeof(out->private_key), "");
+    nvs_get_str_or(h, "wg_pub", out->public_key, sizeof(out->public_key), "");
+    nvs_get_str_or(h, "wg_psk", out->preshared_key, sizeof(out->preshared_key), "");
+    nvs_get_str_or(h, "wg_ep", out->endpoint, sizeof(out->endpoint), "");
+    out->port = nvs_get_u16_or(h, "wg_port", WG_DEFAULTS.port);
+    nvs_get_str_or(h, "wg_addr", out->address, sizeof(out->address), "");
+    nvs_get_str_or(h, "wg_mask", out->netmask, sizeof(out->netmask),
+                   WG_DEFAULTS.netmask);
+    out->keepalive = nvs_get_u16_or(h, "wg_ka", WG_DEFAULTS.keepalive);
+    out->default_route = nvs_get_u8_or(h, "wg_def", 1) != 0;
+    nvs_close(h);
+}
+
+bool wg_cfg_set(const wg_cfg_t *in)
+{
+    nvs_handle_t h;
+    if (nvs_open(NS, NVS_READWRITE, &h) != ESP_OK) {
+        return false;
+    }
+    nvs_set_u8(h, "wg_on", in->enabled ? 1 : 0);
+    nvs_set_str(h, "wg_priv", in->private_key);
+    nvs_set_str(h, "wg_pub", in->public_key);
+    nvs_set_str(h, "wg_psk", in->preshared_key);
+    nvs_set_str(h, "wg_ep", in->endpoint);
+    nvs_set_u16(h, "wg_port", in->port ? in->port : WG_DEFAULTS.port);
+    nvs_set_str(h, "wg_addr", in->address);
+    nvs_set_str(h, "wg_mask", in->netmask[0] ? in->netmask : WG_DEFAULTS.netmask);
+    nvs_set_u16(h, "wg_ka", in->keepalive);
+    nvs_set_u8(h, "wg_def", in->default_route ? 1 : 0);
+    bool ok = nvs_commit(h) == ESP_OK;
+    nvs_close(h);
+    return ok;
+}
+
+bool wg_cfg_clear(void)
+{
+    nvs_handle_t h;
+    if (nvs_open(NS, NVS_READWRITE, &h) != ESP_OK) {
+        return false;
+    }
+    static const char *keys[] = {
+        "wg_on", "wg_priv", "wg_pub", "wg_psk", "wg_ep",
+        "wg_port", "wg_addr", "wg_mask", "wg_ka", "wg_def",
+    };
+    for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]); i++) {
+        nvs_erase_key(h, keys[i]);
+    }
+    bool ok = nvs_commit(h) == ESP_OK;
+    nvs_close(h);
+    return ok;
+}
+
+/* ------------------------------------------------------------------ */
 /* System                                                              */
 
 void sys_cfg_get(sys_cfg_t *out)

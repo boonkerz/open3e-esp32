@@ -1,0 +1,12 @@
+# The WireGuard component comes from the ESP Component Registry and has
+# no Kconfig of its own. Its header reads CONFIG_WIREGUARD_MAX_SRC_IPS to
+# size the per-peer allowed-address array; the default is 1, which the
+# device's own tunnel address already occupies. This firmware adds
+# 0.0.0.0/0 as a second entry, so the array must have at least two slots.
+config WIREGUARD_MAX_SRC_IPS
+    int
+    default 4
+    help
+        Maximum number of allowed source/destination addresses per
+        WireGuard peer. One entry is taken by the device's own tunnel
+        address; the firmware adds 0.0.0.0/0, which needs another.

@@ -65,3 +65,18 @@ CONFIG_ESP_COREDUMP_STACK_SIZE=1792
 # alone can sit one short of the limit -- and the next request then closes the
 # oldest connection, which lands on whichever answer took longest to produce.
 CONFIG_LWIP_MAX_SOCKETS=16
+
+# WireGuard adds a raw lwIP netif whose state is its own device pointer.
+# ESP-IDF's extended netif callback only stores the esp_netif pointer in
+# netif->client_data when LWIP_ESP_NETIF_DATA is enabled, and that switch is
+# tied to PPP or bridge support. Without it the callback casts the WireGuard
+# device pointer to esp_netif_t and crashes in esp_netif_internal_dhcpc_cb
+# while netif_add() sets the address. PPP itself is not used; the option only
+# selects the safe callback mode.
+CONFIG_LWIP_PPP_SUPPORT=y
+
+# WireGuard keeps allowed addresses in a fixed-size array. The device's own
+# tunnel address takes one slot; reaching any remote host needs at least one
+# more, and this firmware adds 0.0.0.0/0 (the ESPHome default) so that traffic
+# in both directions can use whatever the tunnel netmask routes.
+CONFIG_WIREGUARD_MAX_SRC_IPS=4

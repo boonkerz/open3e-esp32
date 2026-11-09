@@ -127,6 +127,29 @@ function renderStatus(s) {
   $("s-ssid").textContent = s.net.ssid || "–";
   $("s-ip").textContent = s.net.ip || "–";
   $("s-rssi").textContent = s.net.rssi ? `${s.net.rssi} dBm` : "–";
+  if (s.wireguard) {
+    const w = s.wireguard;
+    const labels = { disabled: "aus", waiting: "wartet", connecting: "verbinde…",
+                     up: "verbunden", error: "Fehler" };
+    let txt = labels[w.state] || w.state;
+    if (w.state === "up") {
+      const age = w.handshakeAgeS || 0;
+      txt += `, Handshake ${age < 60 ? `vor ${age} s` : `vor ${fmtDuration(age)}`}`;
+      if (w.endpointIp) txt += ` (${w.endpointIp})`;
+    } else if (w.error) {
+      txt += `: ${w.error}`;
+    }
+    const el = $("s-wg");
+    if (el) {
+      el.textContent = txt;
+      el.style.color = w.state === "error" ? "var(--err)" : "";
+    }
+    const st = $("wg-state");
+    if (st) {
+      st.textContent = txt;
+      st.style.color = w.state === "error" ? "var(--err)" : "";
+    }
+  }
   $("s-uptime").textContent = fmtDuration(s.uptimeS);
   /* Without a synchronised clock a trace can only be read against itself. Say
      so plainly rather than showing a plausible-looking wrong date. */
@@ -1519,6 +1542,21 @@ async function loadSettings() {
   $("mq-cmnd").value = s.mqtt.cmndTopic;
   $("ha-on").checked = s.mqtt.haDiscovery;
   $("ha-prefix").value = s.mqtt.haPrefix;
+  const wg = s.wireguard || {};
+  $("wg-enabled").checked = !!wg.enabled;
+  $("wg-endpoint").value = wg.endpoint || "";
+  $("wg-port").value = wg.port || 51820;
+  $("wg-address").value = wg.address || "";
+  $("wg-netmask").value = wg.netmask || "255.255.255.0";
+  $("wg-keepalive").value = wg.keepalive ?? 25;
+  $("wg-default").checked = wg.defaultRoute !== false;
+  $("wg-pub").value = wg.publicKey || "";
+  $("wg-self").value = wg.devicePublicKey || "";
+  $("wg-priv").value = "";
+  $("wg-priv").placeholder = wg.hasPrivateKey ? "unverändert" : "";
+  $("wg-psk").value = "";
+  $("wg-psk").placeholder = wg.hasPresharedKey ? "unverändert" : "";
+  markUnsupported("card-wg", "wireguard" in s, "WireGuard");
   $("sys-write").checked = s.system.writeEnabled;
   $("sys-rawwrite").checked = s.system.rawWriteEnabled;
   $("sys-rawids").value = s.system.rawCanIds || "";
@@ -1602,6 +1640,16 @@ async function saveSettings() {
       haDiscovery: $("ha-on").checked,
       haPrefix: $("ha-prefix").value,
     },
+    ...(CAPS["card-wg"] === false ? {} : { wireguard: {
+      enabled: $("wg-enabled").checked,
+      endpoint: $("wg-endpoint").value.trim(),
+      port: Number($("wg-port").value) || 51820,
+      address: $("wg-address").value.trim(),
+      netmask: $("wg-netmask").value.trim() || "255.255.255.0",
+      keepalive: Number($("wg-keepalive").value) || 0,
+      defaultRoute: $("wg-default").checked,
+      publicKey: $("wg-pub").value.trim(),
+    } }),
     system: {
       writeEnabled: $("sys-write").checked,
       ...(CAPS["raw-note"] === false ? {} : {
@@ -1632,10 +1680,16 @@ async function saveSettings() {
   /* Only send the password when one was actually typed, so the stored value
      survives an unrelated settings change. */
   if ($("mq-pass").value) body.mqtt.pass = $("mq-pass").value;
+  if (body.wireguard) {
+    if ($("wg-priv").value) body.wireguard.privateKey = $("wg-priv").value.trim();
+    if ($("wg-psk").value) body.wireguard.presharedKey = $("wg-psk").value.trim();
+  }
 
   try {
     await api("/api/settings", { method: "PUT", body: JSON.stringify(body) });
     $("mq-pass").value = "";
+    $("wg-priv").value = "";
+    $("wg-psk").value = "";
     toast("Einstellungen gespeichert.", "ok");
     loadSettings();
   } catch (e) {

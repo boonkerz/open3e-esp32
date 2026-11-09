@@ -29,6 +29,7 @@ idf_component_register(
         "raw_relay.c"
         "sysinfo.c"
         "uds.c"
+        "wg_link.c"
     INCLUDE_DIRS "."
     REQUIRES
         esp_driver_gpio
@@ -44,6 +45,8 @@ idf_component_register(
         espcoredump
         espressif__cjson
         espressif__mqtt
+        esphome__libsodium
+        esphome__wireguard
         joltwallet__littlefs
         espressif__mdns
 )

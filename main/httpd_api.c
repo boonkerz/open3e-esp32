@@ -38,6 +38,7 @@
 #include "poller.h"
 #include "raw_relay.h"
 #include "sysinfo.h"
+#include "wg_link.h"
 
 static const char *TAG = "http";
 static httpd_handle_t server;
@@ -218,6 +219,8 @@ static esp_err_t h_status(httpd_req_t *r)
     poller_stats(&poll);
     e3_scan_status(&scan);
     sys_cfg_get(&sys);
+    wg_link_status_t wg;
+    wg_link_status(&wg);
 
     o3e_buf_t b;
     o3e_buf_init(&b);
@@ -437,6 +440,22 @@ static esp_err_t h_status(httpd_req_t *r)
         o3e_buf_adds(&b, "}");
     }
     o3e_buf_adds(&b, "], ");
+
+    const char *wg_state =
+        wg.state == WG_LINK_UP ? "up"
+        : wg.state == WG_LINK_CONNECTING ? "connecting"
+        : wg.state == WG_LINK_WAITING ? "waiting"
+        : wg.state == WG_LINK_ERROR ? "error" : "disabled";
+    snprintf(t, sizeof(t),
+             "\"wireguard\": {\"enabled\": %s, \"state\": \"%s\", "
+             "\"peerUp\": %s, \"handshakeAgeS\": %u, \"endpointIp\": ",
+             wg.enabled ? "true" : "false", wg_state,
+             wg.peer_up ? "true" : "false", (unsigned)wg.handshake_age_s);
+    o3e_buf_adds(&b, t);
+    o3e_buf_add_json_str(&b, wg.endpoint_ip);
+    o3e_buf_adds(&b, ", \"error\": ");
+    o3e_buf_add_json_str(&b, wg.error);
+    o3e_buf_adds(&b, "}, ");
 
     snprintf(t, sizeof(t),
              "\"scan\": {\"phase\": \"%s\", \"probed\": %u, \"total\": %u, "
@@ -1468,9 +1487,11 @@ static esp_err_t h_export(httpd_req_t *r)
     wifi_cfg_t wifi;
     mqtt_cfg_t mq;
     sys_cfg_t sys;
+    wg_cfg_t wg;
     wifi_cfg_get(&wifi);
     mqtt_cfg_get(&mq);
     sys_cfg_get(&sys);
+    wg_cfg_get(&wg);
 
     httpd_resp_set_type(r, "application/json");
     httpd_resp_set_hdr(r, "Cache-Control", "no-store");
@@ -1515,6 +1536,25 @@ static esp_err_t h_export(httpd_req_t *r)
     o3e_buf_adds(&b, mq.ha_discovery ? "true" : "false");
     o3e_buf_adds(&b, ", \"haPrefix\": ");
     o3e_buf_add_json_str(&b, mq.ha_prefix);
+
+    o3e_buf_adds(&b, "}, \"wireguard\": {\"enabled\": ");
+    o3e_buf_adds(&b, wg.enabled ? "true" : "false");
+    o3e_buf_adds(&b, ", \"endpoint\": ");
+    o3e_buf_add_json_str(&b, wg.endpoint);
+    snprintf(t, sizeof(t), ", \"port\": %u, \"address\": ", wg.port);
+    o3e_buf_adds(&b, t);
+    o3e_buf_add_json_str(&b, wg.address);
+    o3e_buf_adds(&b, ", \"netmask\": ");
+    o3e_buf_add_json_str(&b, wg.netmask);
+    snprintf(t, sizeof(t), ", \"keepalive\": %u, \"privateKey\": ", wg.keepalive);
+    o3e_buf_adds(&b, t);
+    o3e_buf_add_json_str(&b, wg.private_key);
+    o3e_buf_adds(&b, ", \"publicKey\": ");
+    o3e_buf_add_json_str(&b, wg.public_key);
+    o3e_buf_adds(&b, ", \"presharedKey\": ");
+    o3e_buf_add_json_str(&b, wg.preshared_key);
+    o3e_buf_adds(&b, ", \"defaultRoute\": ");
+    o3e_buf_adds(&b, wg.default_route ? "true" : "false");
 
     o3e_buf_adds(&b, "}, \"system\": {\"writeEnabled\": ");
     o3e_buf_adds(&b, sys.write_enabled ? "true" : "false");
@@ -1671,6 +1711,32 @@ static bool import_apply(const cJSON *root, char *err, size_t err_sz)
         mqtt_cfg_set(&m);
     }
 
+    const cJSON *jwg = cJSON_GetObjectItem(root, "wireguard");
+    if (cJSON_IsObject(jwg)) {
+        wg_cfg_t w;
+        wg_cfg_get(&w);
+        const cJSON *v;
+        if (cJSON_IsBool(v = cJSON_GetObjectItem(jwg, "enabled"))) {
+            w.enabled = cJSON_IsTrue(v);
+        }
+        if (cJSON_IsNumber(v = cJSON_GetObjectItem(jwg, "port"))) {
+            w.port = (uint16_t)v->valuedouble;
+        }
+        if (cJSON_IsNumber(v = cJSON_GetObjectItem(jwg, "keepalive"))) {
+            w.keepalive = (uint16_t)v->valuedouble;
+        }
+        if (cJSON_IsBool(v = cJSON_GetObjectItem(jwg, "defaultRoute"))) {
+            w.default_route = cJSON_IsTrue(v);
+        }
+        copy_str(jwg, "endpoint", w.endpoint, sizeof(w.endpoint));
+        copy_str(jwg, "address", w.address, sizeof(w.address));
+        copy_str(jwg, "netmask", w.netmask, sizeof(w.netmask));
+        copy_str(jwg, "privateKey", w.private_key, sizeof(w.private_key));
+        copy_str(jwg, "publicKey", w.public_key, sizeof(w.public_key));
+        copy_str(jwg, "presharedKey", w.preshared_key, sizeof(w.preshared_key));
+        wg_cfg_set(&w);
+    }
+
     const cJSON *js = cJSON_GetObjectItem(root, "system");
     if (cJSON_IsObject(js)) {
         sys_cfg_t sc;
@@ -1714,9 +1780,13 @@ static esp_err_t h_settings_get(httpd_req_t *r)
     mqtt_cfg_t mq;
     sys_cfg_t sys;
     wifi_cfg_t wifi;
+    wg_cfg_t wg;
     mqtt_cfg_get(&mq);
     sys_cfg_get(&sys);
     wifi_cfg_get(&wifi);
+    wg_cfg_get(&wg);
+    char wg_public[CFG_WG_KEY_MAX] = "";
+    wg_link_device_public_key(wg_public, sizeof(wg_public));
 
     o3e_buf_t b;
     o3e_buf_init(&b);
@@ -1767,6 +1837,26 @@ static esp_err_t h_settings_get(httpd_req_t *r)
     knx_to_json(&b, &sys);
     o3e_buf_adds(&b, ", \"hostname\": ");
     o3e_buf_add_json_str(&b, wifi.hostname);
+    o3e_buf_adds(&b, "}, \"wireguard\": {\"enabled\": ");
+    o3e_buf_adds(&b, wg.enabled ? "true" : "false");
+    o3e_buf_adds(&b, ", \"endpoint\": ");
+    o3e_buf_add_json_str(&b, wg.endpoint);
+    snprintf(t, sizeof(t), ", \"port\": %u, \"address\": ", wg.port);
+    o3e_buf_adds(&b, t);
+    o3e_buf_add_json_str(&b, wg.address);
+    o3e_buf_adds(&b, ", \"netmask\": ");
+    o3e_buf_add_json_str(&b, wg.netmask);
+    snprintf(t, sizeof(t), ", \"keepalive\": %u, \"publicKey\": ", wg.keepalive);
+    o3e_buf_adds(&b, t);
+    o3e_buf_add_json_str(&b, wg.public_key);
+    o3e_buf_adds(&b, ", \"defaultRoute\": ");
+    o3e_buf_adds(&b, wg.default_route ? "true" : "false");
+    o3e_buf_adds(&b, ", \"devicePublicKey\": ");
+    o3e_buf_add_json_str(&b, wg_public);
+    o3e_buf_adds(&b, ", \"hasPrivateKey\": ");
+    o3e_buf_adds(&b, wg.private_key[0] ? "true" : "false");
+    o3e_buf_adds(&b, ", \"hasPresharedKey\": ");
+    o3e_buf_adds(&b, wg.preshared_key[0] ? "true" : "false");
     o3e_buf_adds(&b, "}}");
 
     esp_err_t e = send_json(r, b.buf ? b.buf : "{}");
@@ -1934,6 +2024,40 @@ static esp_err_t h_settings_put(httpd_req_t *r)
         }
         mqtt_cfg_set(&mq);
         mqtt_pub_restart();
+    }
+
+    const cJSON *jw = cJSON_GetObjectItem(j, "wireguard");
+    if (cJSON_IsObject(jw)) {
+        wg_cfg_t wg;
+        wg_cfg_get(&wg);
+        wg_cfg_t before = wg;
+        const cJSON *v;
+        if (cJSON_IsBool(v = cJSON_GetObjectItem(jw, "enabled"))) {
+            wg.enabled = cJSON_IsTrue(v);
+        }
+        copy_str(jw, "endpoint", wg.endpoint, sizeof(wg.endpoint));
+        if (cJSON_IsNumber(v = cJSON_GetObjectItem(jw, "port"))) {
+            wg.port = (uint16_t)v->valuedouble;
+        }
+        copy_str(jw, "address", wg.address, sizeof(wg.address));
+        copy_str(jw, "netmask", wg.netmask, sizeof(wg.netmask));
+        if (cJSON_IsNumber(v = cJSON_GetObjectItem(jw, "keepalive"))) {
+            wg.keepalive = (uint16_t)v->valuedouble;
+        }
+        if (cJSON_IsBool(v = cJSON_GetObjectItem(jw, "defaultRoute"))) {
+            wg.default_route = cJSON_IsTrue(v);
+        }
+        copy_str(jw, "publicKey", wg.public_key, sizeof(wg.public_key));
+        /* Absent means "keep the stored secret", same as the MQTT password:
+         * the UI never receives either key back. */
+        copy_str(jw, "privateKey", wg.private_key, sizeof(wg.private_key));
+        copy_str(jw, "presharedKey", wg.preshared_key, sizeof(wg.preshared_key));
+        wg_cfg_set(&wg);
+        /* Saving the timezone or a contact must not tear down a working
+         * tunnel. Only reconnect when something in this section changed. */
+        if (memcmp(&before, &wg, sizeof(wg)) != 0) {
+            wg_link_restart();
+        }
     }
 
     const cJSON *js = cJSON_GetObjectItem(j, "system");
@@ -2161,6 +2285,8 @@ static esp_err_t h_reset(httpd_req_t *r)
         mqtt_cfg_t mq;
         memset(&mq, 0, sizeof(mq));
         mqtt_cfg_set(&mq);
+        wg_cfg_clear();
+        wg_link_restart();
         sys_cfg_t sys;
         memset(&sys, 0, sizeof(sys));
         sys_cfg_set(&sys);

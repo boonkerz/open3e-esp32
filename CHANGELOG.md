@@ -13,6 +13,19 @@ bis dahin auf der Flash-Seite lag.
 
 ### Hinzugefügt
 
+- **WireGuard** Unter *Einstellungen → Anbindung* lässt
+  sich ein Tunnel zu einem WireGuard-Server einrichten. Broker und
+  Fernzugriff im Tunnel-Subnetz laufen allein über die Netzmaske; die
+  zuschaltbare Standardroute leitet zusätzlich alles außerhalb des lokalen
+  WLANs durch den Tunnel (für Clients in anderen Netzen hinter dem Server).
+  Das lokale WLAN bleibt in beiden Fällen direkt erreichbar, damit ein
+  Tunnelausfall das Gerät nicht aussperrt. Die Implementierung ist die
+  ESPHome-Bibliothek `esphome/wireguard`.
+  Endpunkt, Tunnel-Adresse, Netzmaske, Keepalive, privater Schlüssel,
+  Gegenstellen-Schlüssel und optional ein Preshared Key stehen im Web-UI;
+  `/api/status` liefert Zustand, Endpunkt-IP und das Alter des letzten
+  Handshakes. Die Schlüssel sind Teil der Sicherung, und „Alles außer WLAN"
+  löscht die WireGuard-Konfiguration mit.
 - **Schaltausgänge** (#5, TheSmartGerman): GPIO1 und GPIO2 lassen sich je
   Pin als Ausgang betreiben, etwa für ein Relais an den SG-Ready-Klemmen.
   Zustand auf `<Basis>/output/<name>`, Befehl `ON`/`OFF` auf `…/set`, in
