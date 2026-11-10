@@ -1207,7 +1207,11 @@ ebenfalls über das Web-UI erneuern:
 | *Datenbank aktualisieren* | ganze Partition (`build/storage.bin`) | 4 MB, Neustart |
 
 Der Datei-Weg ist der Alltagsfall, solange sich die Oberfläche noch täglich
-ändert: `app.js.gz` hochladen, Seite mit Strg+F5 neu laden, fertig.
+ändert: `app.js.gz` hochladen, Seite mit Strg+F5 neu laden, fertig. Er nimmt
+Dateien bis 256 KiB; die Datenbank (1,7 MB) geht nur als Partitionsabbild.
+Der Versuch, sie als Datei hochzuladen, hat ein Gerät ohne Absturzbericht zum
+Stillstand gebracht: littlefs schreibt in 128-Byte-Schritten mit einer
+Blocklöschung je 4 KiB, neben der alten Kopie auf einer 4-MiB-Partition.
 
 > **Nur die Oberfläche zu aktualisieren reicht nicht, wenn eine Funktion neu
 > ist.** Dann zeigt die Seite Bedienelemente, die die laufende Firmware nicht

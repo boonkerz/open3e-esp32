@@ -1,5 +1,6 @@
 #include "app_config.h"
 
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -72,6 +73,27 @@ bool app_config_init(void)
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "littlefs mount failed: %s", esp_err_to_name(err));
         return false;
+    }
+    /* A file upload lands under a temporary name and is renamed at the end.
+     * If the device died in between, the leftover sits there holding its
+     * space, with the database up to 1.7 MB of a 4 MiB partition. */
+    static const char *const dirs[] = { CFG_MOUNT, CFG_WWW_DIR };
+    for (size_t i = 0; i < sizeof(dirs) / sizeof(dirs[0]); i++) {
+        DIR *d = opendir(dirs[i]);
+        if (!d) {
+            continue;
+        }
+        struct dirent *e;
+        while ((e = readdir(d)) != NULL) {
+            size_t n = strlen(e->d_name);
+            if (n > 3 && strcmp(e->d_name + n - 3, ".up") == 0) {
+                char path[sizeof(CFG_WWW_DIR) + sizeof(e->d_name) + 1];
+                snprintf(path, sizeof(path), "%s/%s", dirs[i], e->d_name);
+                ESP_LOGW(TAG, "removing interrupted upload %s", path);
+                remove(path);
+            }
+        }
+        closedir(d);
     }
     size_t total = 0, used = 0;
     if (esp_littlefs_info(conf.partition_label, &total, &used) == ESP_OK) {

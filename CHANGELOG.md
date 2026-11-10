@@ -100,6 +100,15 @@ bis dahin auf der Flash-Seite lag.
 
 ### Behoben
 
+- **Datei-Upload hängte das Gerät auf**, als die 1,7 MB große Datenbank
+  über *Weboberfläche aktualisieren* statt als Partitionsabbild kam: kein
+  Absturzbericht, kein Neustart, erst Stromlos-Machen half. Der Datei-Weg
+  nimmt jetzt nur noch Dateien bis 256 KiB und verweist auf das Abbild.
+  Dazu: ein abgebrochener Upload blockierte den Upload-Platz für immer,
+  weil die Empfangsschleife bei jedem Socket-Timeout einfach weiter
+  wartete; nach 90 s ohne Daten wird jetzt abgebrochen und die halbfertige
+  Datei gelöscht, Reste früherer Uploads (`*.up`) räumt der Start weg. Der
+  Task-Watchdog startet das Gerät neu, statt nur zu warnen.
 - **Rund drei Busfehler je Sekunde am Viessmann-Bus** (ioBroker.e3oncan
   #262, Issue #14). Der ESP-IDF-Treiber setzt die Resynchronisation (SJW)
   bei 250 kBit/s auf ein einziges Zeitquantum von 200 ns. Hinter dem

@@ -45,8 +45,11 @@ CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 
 # Reading a heat pump over CAN is not latency critical, but a wedged bus should
-# never take the whole device down.
+# never take the whole device down. And when a task does starve the idle task
+# for 30 s, reboot instead of logging a warning nobody sees: the device sits
+# in a distribution box, a hang means a trip with a USB cable.
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=30
+CONFIG_ESP_TASK_WDT_PANIC=y
 
 # Crash reports survive the reboot.
 #

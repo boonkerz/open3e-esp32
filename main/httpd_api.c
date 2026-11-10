@@ -1629,11 +1629,18 @@ static esp_err_t h_import(httpd_req_t *r)
     }
     char chunk[1024];
     int received = 0;
+    int timeouts = 0;
     while (received < r->content_len) {
         int n = httpd_req_recv(r, chunk, sizeof(chunk));
         if (n == HTTPD_SOCK_ERR_TIMEOUT) {
+            if (++timeouts >= 3) {
+                fclose(f);
+                remove(IMPORT_TMP);
+                return send_err(r, 408, "the upload stalled");
+            }
             continue;
         }
+        timeouts = 0;
         if (n <= 0 || fwrite(chunk, 1, (size_t)n, f) != (size_t)n) {
             fclose(f);
             remove(IMPORT_TMP);
@@ -2208,11 +2215,21 @@ static esp_err_t stream_upload(httpd_req_t *r,
         return send_err(r, 500, "out of memory");
     }
     int received = 0;
+    int timeouts = 0;
     while (received < r->content_len) {
         int n = httpd_req_recv(r, buf, 4096);
         if (n == HTTPD_SOCK_ERR_TIMEOUT) {
+            /* One stall is a slow link; three in a row (90 s) is a dead one.
+             * Looping forever here kept a half-written file open and the
+             * upload slot busy after the connection was long gone. */
+            if (++timeouts >= 3) {
+                free(buf);
+                abort_fn();
+                return send_err(r, 408, "the upload stalled");
+            }
             continue;
         }
+        timeouts = 0;
         if (n <= 0) {
             free(buf);
             abort_fn();
@@ -2230,13 +2247,25 @@ static esp_err_t stream_upload(httpd_req_t *r,
 
 /* Replace one file on the storage partition. This is the everyday path while
  * the interface is still changing: app.js is a few KiB, the whole partition
- * image is four megabytes. */
+ * image is four megabytes.
+ *
+ * Capped at 256 KiB. Pushing the 1.7 MB database through this path wrote it
+ * to littlefs in 128-byte programs with a flash erase every 4 KiB, next to
+ * the old copy on a 4 MiB partition, and the device hung without a crash
+ * report until it was power-cycled. The database belongs in the partition
+ * image, which is written raw like a firmware update. */
+#define FS_FILE_MAX (256 * 1024)
+
 static esp_err_t h_fs_put(httpd_req_t *r)
 {
     char q[256], name[160];
     if (httpd_req_get_url_query_str(r, q, sizeof(q)) != ESP_OK ||
         httpd_query_key_value(q, "path", name, sizeof(name)) != ESP_OK) {
         return send_err(r, 400, "path parameter is required");
+    }
+    if (r->content_len <= 0 || r->content_len > FS_FILE_MAX) {
+        return send_err(r, 413, "files over 256 KiB (the database) go in as the "
+                                "storage image, not as single files");
     }
 
     char err[160] = "";

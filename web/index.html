@@ -951,7 +951,10 @@
     <p class="hint"><b>Nicht</b> die Anwendung. Ändert nur, was der Browser zeigt — neue Bedienelemente aus der Firmware bleiben wirkungslos, wenn die Anwendung sie nicht kennt. Im Zweifel Karte&nbsp;3.</p>
     <p class="hint">Die Oberfläche liegt auf der Storage-Partition, nicht in der
       Firmware. Einzelne Dateien lassen sich hier direkt ersetzen — der schnelle
-      Weg, solange sich noch täglich etwas ändert.</p>
+      Weg, solange sich noch täglich etwas ändert. Nur für die kleinen
+      Webdateien (bis 256 KiB): die Datenbank <span class="mono">o3edb.bin</span>
+      gehört in Karte&nbsp;2, über diesen Weg hat sie das Gerät schon einmal
+      zum Stillstand gebracht.</p>
     <div class="row">
       <label><span>Dateien aus <span class="mono">storage_image/www/</span> (z. B. app.js.gz)</span>
         <input type="file" id="fs-files" multiple></label>
