@@ -85,6 +85,7 @@
       <div class="kv"><div class="k">Fehlerstelle im Frame</div><div class="v" id="s-errseg">–</div></div>
       <div class="kv"><div class="k">Bus-Off-Recovery</div><div class="v" id="s-recov">–</div></div>
       <div class="kv"><div class="k">Bus belegt von</div><div class="v" id="s-holder">–</div></div>
+      <div class="kv"><div class="k">Bit-Timing</div><div class="v" id="s-timing">–</div></div>
     </div>
     <p class="hint" style="margin:12px 0 0">250 kBit/s, TX GPIO15, RX GPIO16.
       <b>TX-Fehlerzähler steigt, RX bleibt 0</b> heißt: gesendet, aber niemand
@@ -115,7 +116,10 @@
     <div class="row" style="margin-top:14px">
       <button class="btn" id="diag-run" style="flex:0 0 auto">Bus-Diagnose starten</button>
       <span class="small muted" style="align-self:center">Dauert etwa 10 Sekunden.
-        Der Listen-Only-Teil sendet nichts und kann einen intakten Bus nicht stören.</span>
+        Der Listen-Only-Teil sendet nichts, auch kein ACK. Auf einem Bus mit
+        weiteren Knoten stört das nicht; hängen nur die Steuerung und dieses
+        Gerät am Bus, wiederholt die Steuerung ihre Frames für die 8 Sekunden
+        ohne Quittung im Dauerlauf und erholt sich danach von selbst.</span>
     </div>
     <div id="diag-out" hidden style="margin-top:14px"></div>
   </div>
@@ -749,6 +753,20 @@
       Neustart ist der Ausgang aus.</p>
   </div>
 
+  <div class="card" id="card-timing">
+    <h2>CAN-Bit-Timing</h2>
+    <p class="hint">Für Versuche bei Busfehlern. Leer heißt Treiberstandard,
+      bei 250 kBit/s sind das 20 Zeitquanten, Abtastung bei 85 % und SJW 1.
+      Gilt beim Speichern sofort, der Controller startet dafür kurz neu. Erst
+      eine Stunde mit einem Wert laufen lassen und die Karte „CAN-Bus"
+      vergleichen, dann den nächsten.</p>
+    <div class="row">
+      <label><span>Abtastzeitpunkt (%)</span><input type="number" id="can-sp" min="50" max="90" step="0.5" placeholder="Standard (85)"></label>
+      <label><span>SJW (Quanten, 1 bis 4)</span><input type="number" id="can-sjw" min="1" max="4" step="1" placeholder="Standard (1)"></label>
+    </div>
+    <p class="small muted" style="margin:-4px 0 12px">Angewendet:
+      <span class="mono" id="can-timing-state">–</span></p>
+  </div>
   <div class="card">
     <h2>Zeit</h2>
     <label><span>Zeitzone (POSIX)</span><input type="text" id="sys-tz"></label>

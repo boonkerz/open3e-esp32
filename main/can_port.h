@@ -67,6 +67,22 @@ typedef struct {
 } can_stats_t;
 
 /* Bring up the TWAI peripheral and start the request-serving task. */
+/* Bit timing: what the settings ask for and what the driver made of it. A
+ * requested value of 0 means the driver's default. */
+typedef struct {
+    uint16_t sp_permill;    /* requested sample point, permill of the bit */
+    uint8_t  sjw;           /* requested synchronisation jump width, quanta */
+    bool     known;         /* the applied values below could be derived */
+    uint8_t  quanta;        /* applied: time quanta per bit */
+    uint16_t sp_actual;     /* applied sample point, permill */
+    uint8_t  sjw_actual;    /* applied SJW, quanta */
+} can_timing_t;
+
+/* Store the requested timing; a running node is re-created with it. Called
+ * before can_port_start() it only stores. */
+void can_port_set_timing(uint16_t sp_permill, uint8_t sjw);
+void can_port_timing(can_timing_t *out);
+
 bool can_port_start(void);
 void can_port_stop(void);
 void can_port_stats(can_stats_t *out);
@@ -90,6 +106,10 @@ typedef struct {
     uint32_t frames;                      /* frames seen at this bit rate */
     uint8_t  n_ids;
     uint32_t ids[CAN_DIAG_MAX_IDS];       /* distinct IDs, in order of arrival */
+    uint32_t repeats;                     /* frames identical to the one before;
+                                           * thousands of them mean nobody else
+                                           * acknowledges and the transmitter is
+                                           * retrying the same frame non-stop */
     uint32_t errors;                      /* bus errors flagged while listening;
                                            * in listen-only the node never
                                            * acknowledges, so these cannot come

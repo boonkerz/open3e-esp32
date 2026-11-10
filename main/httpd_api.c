@@ -312,6 +312,16 @@ static esp_err_t h_status(httpd_req_t *r)
              (unsigned)can.ack_errors, (unsigned)can.other_errors,
              (unsigned)can.rx_errors, (unsigned)can.tx_errors);
     o3e_buf_adds(&b, t);
+    {
+        can_timing_t tm;
+        can_port_timing(&tm);
+        snprintf(t, sizeof(t),
+                 "\"timing\": {\"known\": %s, \"quanta\": %u, \"samplePoint\": %u, "
+                 "\"sjw\": %u, \"custom\": %s}, ",
+                 tm.known ? "true" : "false", tm.quanta, tm.sp_actual, tm.sjw_actual,
+                 (tm.sp_permill || tm.sjw) ? "true" : "false");
+        o3e_buf_adds(&b, t);
+    }
     /* Where in the frame the errors were seen; only segments that occurred,
      * and segments sharing a name (the ID bits) summed. */
     o3e_buf_adds(&b, "\"errSegments\": {");
@@ -696,9 +706,10 @@ static esp_err_t h_candiag(httpd_req_t *r)
 
     for (size_t i = 0; i < sizeof(rates) / sizeof(rates[0]); i++) {
         snprintf(t, sizeof(t),
-                 "%s{\"bitrate\": %u, \"frames\": %u, \"errors\": %u, \"ids\": [",
+                 "%s{\"bitrate\": %u, \"frames\": %u, \"repeats\": %u, "
+                 "\"errors\": %u, \"ids\": [",
                  i ? ", " : "", (unsigned)res[i].bitrate, (unsigned)res[i].frames,
-                 (unsigned)res[i].errors);
+                 (unsigned)res[i].repeats, (unsigned)res[i].errors);
         o3e_buf_adds(&b, t);
         for (uint8_t k = 0; k < res[i].n_ids; k++) {
             snprintf(t, sizeof(t), "%s\"0x%03X\"", k ? ", " : "",
@@ -1528,6 +1539,9 @@ static esp_err_t h_export(httpd_req_t *r)
     o3e_buf_add_json_str(&b, sys.collect_canids);
     o3e_buf_adds(&b, ", \"rawCanIds\": ");
     o3e_buf_add_json_str(&b, sys.raw_canids);
+    snprintf(t, sizeof(t), ", \"canSamplePoint\": %u, \"canSjw\": %u",
+             sys.can_sample_permill, sys.can_sjw);
+    o3e_buf_adds(&b, t);
     o3e_buf_adds(&b, ", \"tz\": ");
     o3e_buf_add_json_str(&b, sys.tz);
     o3e_buf_adds(&b, ", \"contacts\": ");
@@ -1686,11 +1700,28 @@ static bool import_apply(const cJSON *root, char *err, size_t err_sz)
             sc.em380_enabled = cJSON_IsTrue(v);
         }
         copy_str(js, "tz", sc.tz, sizeof(sc.tz));
+        {
+            /* 0 keeps the driver default; anything else is bounded to what
+             * makes sense on a CAN bit: sample point 50 to 90 percent, SJW 1 to 4. */
+            if (cJSON_IsNumber(v = cJSON_GetObjectItem(js, "canSamplePoint"))) {
+                int sp = (int)v->valuedouble;
+                if (sp == 0 || (sp >= 500 && sp <= 900)) {
+                    sc.can_sample_permill = (uint16_t)sp;
+                }
+            }
+            if (cJSON_IsNumber(v = cJSON_GetObjectItem(js, "canSjw"))) {
+                int w = (int)v->valuedouble;
+                if (w >= 0 && w <= 4) {
+                    sc.can_sjw = (uint8_t)w;
+                }
+            }
+        }
         contacts_from_json(cJSON_GetObjectItem(js, "contacts"), &sc);
         knx_from_json(cJSON_GetObjectItem(js, "knx"), &sc);
         sys_cfg_set(&sc);
         contact_start();
         knx_start();
+        can_port_set_timing(sc.can_sample_permill, sc.can_sjw);
     }
 
     const cJSON *jp = cJSON_GetObjectItem(root, "points");
@@ -1759,6 +1790,9 @@ static esp_err_t h_settings_get(httpd_req_t *r)
     o3e_buf_add_json_str(&b, sys.collect_canids);
     o3e_buf_adds(&b, ", \"rawCanIds\": ");
     o3e_buf_add_json_str(&b, sys.raw_canids);
+    snprintf(t, sizeof(t), ", \"canSamplePoint\": %u, \"canSjw\": %u",
+             sys.can_sample_permill, sys.can_sjw);
+    o3e_buf_adds(&b, t);
     o3e_buf_adds(&b, ", \"tz\": ");
     o3e_buf_add_json_str(&b, sys.tz);
     o3e_buf_adds(&b, ", \"contacts\": ");
@@ -1962,12 +1996,33 @@ static esp_err_t h_settings_put(httpd_req_t *r)
         snprintf(raw_ids_was, sizeof(raw_ids_was), "%s", sys.raw_canids);
         copy_str(js, "rawCanIds", sys.raw_canids, sizeof(sys.raw_canids));
         copy_str(js, "tz", sys.tz, sizeof(sys.tz));
+        uint16_t sp_was = sys.can_sample_permill;
+        uint8_t sjw_was = sys.can_sjw;
+        {
+            /* 0 keeps the driver default; anything else is bounded to what
+             * makes sense on a CAN bit: sample point 50 to 90 percent, SJW 1 to 4. */
+            if (cJSON_IsNumber(v = cJSON_GetObjectItem(js, "canSamplePoint"))) {
+                int sp = (int)v->valuedouble;
+                if (sp == 0 || (sp >= 500 && sp <= 900)) {
+                    sys.can_sample_permill = (uint16_t)sp;
+                }
+            }
+            if (cJSON_IsNumber(v = cJSON_GetObjectItem(js, "canSjw"))) {
+                int w = (int)v->valuedouble;
+                if (w >= 0 && w <= 4) {
+                    sys.can_sjw = (uint8_t)w;
+                }
+            }
+        }
         contact_cfg_t contacts_was[CONTACT_COUNT];
         memcpy(contacts_was, sys.contact, sizeof(contacts_was));
         contacts_from_json(cJSON_GetObjectItem(js, "contacts"), &sys);
         knx_cfg_t knx_was = sys.knx;
         knx_from_json(cJSON_GetObjectItem(js, "knx"), &sys);
         sys_cfg_set(&sys);
+        if (sp_was != sys.can_sample_permill || sjw_was != sys.can_sjw) {
+            can_port_set_timing(sys.can_sample_permill, sys.can_sjw);
+        }
         if (memcmp(&knx_was, &sys.knx, sizeof(knx_was)) != 0) {
             knx_start();
         }

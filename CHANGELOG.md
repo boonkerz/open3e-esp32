@@ -45,7 +45,18 @@ bis dahin auf der Flash-Seite lag.
   denen er nichts auf den Bus treibt, nicht einmal das ACK-Bit. Fehler, die
   dort auftreten, liegen auf der Leitung oder im Empfangsweg; Fehler, die
   nur im Normalbetrieb zählen, entstehen durch das eigene Treiben des
-  Geräts. `/api/candiag` liefert je Bitrate `errors`.
+  Geräts. Das gilt nur mit einem dritten Knoten, der quittiert: Hängen nur
+  Steuerung und Gateway am Bus, wiederholt die Steuerung ohne ACK jedes
+  Frame im Dauerlauf. Die Diagnose erkennt das an tausendfach gleichen
+  Frames hintereinander und sagt es, statt die Leitung zu verdächtigen.
+  `/api/candiag` liefert je Bitrate `errors` und `repeats`.
+- **CAN-Bit-Timing einstellbar** unter *Einstellungen → System*:
+  Abtastzeitpunkt (50 bis 90 %) und SJW (1 bis 4 Quanten), leer heißt
+  Treiberstandard (250 kBit/s: 20 Quanten, 85 %, SJW 1). Gilt sofort, der
+  Controller startet kurz neu. Die Karte „CAN-Bus" zeigt das angewendete
+  Timing, `/api/status` unter `can.timing`. Für Anlagen mit Fehlern am
+  Frame-Ende (ioBroker.e3oncan #262), um das Timing als Ursache zu prüfen
+  oder auszuschließen.
 - **Frames verpasst** auf der Karte „CAN-Bus": Frames, die der
   Empfangs-Interrupt nicht mehr ablegen konnte, bisher nur in `/api/status`
   als `rxMissed`. Die Karte erklärt außerdem, was Busfehler, TX/RX und
@@ -79,6 +90,10 @@ bis dahin auf der Flash-Seite lag.
   Ableitpunkt der RS485-Schutzdioden; der CAN-Teil ist getrennt, eine
   Busmasse an GND erreicht den Transceiver nicht (#14, Ersthelfer). Die
   Anleitung lautet jetzt: nur CAN-H und CAN-L anschließen.
+- **„Busfehler" sprang nach der Bus-Diagnose zurück**, weil der Zähler des
+  Treibers mit jedem neuen Controller-Start bei null anfängt, während die
+  Aufschlüsselung weiterzählte. Die Summe läuft jetzt über Diagnose und
+  Timing-Wechsel hinweg durch; der Sweep selbst zählt nicht mit.
 - **„Frames verpasst" zählte weiter**, wenn gerade keine Anfrage lief: die
   Kennung für „keine Anfrage" war die CAN-ID 0, und eine Anlage sendete
   Frames mit dieser ID. Der Leerwert ist jetzt eine ID, die kein Frame

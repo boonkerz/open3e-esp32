@@ -105,6 +105,8 @@ void app_main(void)
                  CFG_DB_PATH);
     }
 
+    /* Bit timing from the settings; stored before the node exists. */
+    can_port_set_timing(sys.can_sample_permill, sys.can_sjw);
     if (!can_port_start()) {
         ESP_LOGE(TAG, "CAN interface did not come up");
     }
