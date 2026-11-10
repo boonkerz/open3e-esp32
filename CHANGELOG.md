@@ -52,7 +52,7 @@ bis dahin auf der Flash-Seite lag.
   `/api/candiag` liefert je Bitrate `errors` und `repeats`.
 - **CAN-Bit-Timing einstellbar** unter *Einstellungen → System*:
   Abtastzeitpunkt (50 bis 90 %) und SJW (1 bis 4 Quanten), leer heißt
-  Treiberstandard (250 kBit/s: 20 Quanten, 85 %, SJW 1). Gilt sofort, der
+  Standard (250 kBit/s: 20 Quanten, 85 %, SJW 3). Gilt sofort, der
   Controller startet kurz neu. Die Karte „CAN-Bus" zeigt das angewendete
   Timing, `/api/status` unter `can.timing`. Für Anlagen mit Fehlern am
   Frame-Ende (ioBroker.e3oncan #262), um das Timing als Ursache zu prüfen
@@ -76,6 +76,16 @@ bis dahin auf der Flash-Seite lag.
 
 ### Behoben
 
+- **Rund drei Busfehler je Sekunde am Viessmann-Bus** (ioBroker.e3oncan
+  #262, Issue #14). Der ESP-IDF-Treiber setzt die Resynchronisation (SJW)
+  bei 250 kBit/s auf ein einziges Zeitquantum von 200 ns. Hinter dem
+  Isolator des Waveshare-Boards reicht das nicht: ACK-Slot-, CRC-Delimiter-
+  und Bitfehler auf eigenen Sendungen, bei einer sonst fehlerfreien Anlage.
+  Eine vierstündige Messreihe mit SJW 3 und 4 bei 75, 80 und 85 % zeigte
+  null Fehler, der Rücksprung auf SJW 1 sofort wieder 3,7/s. Die Firmware
+  setzt den SJW jetzt auf die volle Länge des zweiten Phasenabschnitts
+  (bei 250 kBit/s 3 Quanten); die Einstellung *CAN-Bit-Timing* überschreibt
+  das weiterhin.
 - **Codec-Bäume liegen im PSRAM** (#20, konairius). Die kompilierten
   Datenpunkt-Beschreibungen jedes Poll-Punkts lagen im internen RAM, weil
   kleine Allokationen dort landen; mit 29 ZigBee-Punkten zu je etwa 8 KB
