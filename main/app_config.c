@@ -341,6 +341,8 @@ void sys_cfg_get(sys_cfg_t *out)
     out->grid_ecu = (uint16_t)nvs_get_u16_or(h, "grid_ecu", 0);
     out->grid_watts = (uint16_t)nvs_get_u16_or(h, "grid_w", 2000);
     out->grid_minutes = (uint16_t)nvs_get_u16_or(h, "grid_min", 15);
+    out->can_sample_permill = (uint16_t)nvs_get_u16_or(h, "can_sp", 0);
+    out->can_sjw = nvs_get_u8_or(h, "can_sjw", 0);
     for (int i = 0; i < CONTACT_COUNT; i++) {
         char k[16];
         snprintf(k, sizeof(k), "c%d_on", i);
@@ -391,6 +393,8 @@ bool sys_cfg_set(const sys_cfg_t *in)
     nvs_set_u16(h, "grid_ecu", in->grid_ecu);
     nvs_set_u16(h, "grid_w", in->grid_watts ? in->grid_watts : 2000);
     nvs_set_u16(h, "grid_min", in->grid_minutes ? in->grid_minutes : 15);
+    nvs_set_u16(h, "can_sp", in->can_sample_permill);
+    nvs_set_u8(h, "can_sjw", in->can_sjw);
     for (int i = 0; i < CONTACT_COUNT; i++) {
         char k[16];
         snprintf(k, sizeof(k), "c%d_on", i);

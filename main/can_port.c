@@ -5,6 +5,7 @@
 #include "cantrace.h"
 #include "esp_twai.h"
 #include "esp_twai_onchip.h"
+#include "esp_private/twai_utils.h"   /* twai_node_timing_calc_param */
 #include "hal/twai_ll.h"
 #include "esp_log.h"
 #include "esp_rom_sys.h"
@@ -47,6 +48,25 @@ typedef struct {
  * nothing is decoded, so a sweep cannot disturb an exchange. */
 static volatile bool diag_armed;
 static can_diag_t    diag_acc;
+/* Last frame of the sweep, to count back-to-back repeats. */
+static bool     diag_have_last;
+static uint32_t diag_last_id;
+static uint8_t  diag_last_len;
+static uint8_t  diag_last[8];
+
+/* Bit timing requested by the settings and what the driver applied. The
+ * TWAI source clock is the 80 MHz APB clock; the value is only trusted when
+ * the driver's own calculation reproduces the bitrate with it. */
+#define CAN_SRC_CLK_HZ 80000000u
+static can_timing_t s_timing;
+
+/* The driver's bus error count starts over with every node, and the node is
+ * re-created by the diagnosis and by a timing change. The total on the card
+ * should not; this carries the previous nodes' count. Only the normal node
+ * is summed: a listen-only sweep over wrong bitrates sees tens of thousands
+ * of errors that say nothing about the bus at 250 kbit/s. */
+static uint32_t bus_err_base;
+static bool     node_normal;
 
 /* Passive listeners, consulted from the receive ISR. */
 typedef struct {
@@ -295,6 +315,14 @@ static bool IRAM_ATTR on_rx_done(twai_node_handle_t handle,
 
     if (diag_armed) {
         diag_acc.frames++;
+        if (diag_have_last && diag_last_id == frame.header.id &&
+            diag_last_len == dlc && memcmp(diag_last, buf, dlc) == 0) {
+            diag_acc.repeats++;
+        }
+        diag_have_last = true;
+        diag_last_id = frame.header.id;
+        diag_last_len = dlc;
+        memcpy(diag_last, buf, dlc);
         bool known = false;
         for (uint8_t i = 0; i < diag_acc.n_ids; i++) {
             if (diag_acc.ids[i] == frame.header.id) {
@@ -415,7 +443,7 @@ static void update_stats(void)
     if (!node || twai_node_get_info(node, &st, &rec) != ESP_OK) {
         return;
     }
-    stats.bus_errors = rec.bus_err_num;
+    stats.bus_errors = bus_err_base + rec.bus_err_num;
     stats.tx_err_count = st.tx_error_count;
     stats.rx_err_count = st.rx_error_count;
     switch (st.state) {
@@ -446,7 +474,7 @@ static bool node_create(uint32_t bitrate, bool loopback, bool self_test,
             .quanta_clk_out = -1,
             .bus_off_indicator = -1,
         },
-        .bit_timing = { .bitrate = bitrate },
+        .bit_timing = { .bitrate = bitrate, .sp_permill = s_timing.sp_permill },
         /* Send once; hal_send() retries in software, see TX_ATTEMPTS. On
          * this controller every value but -1 means the same as 0, and -1
          * (retry forever) would wedge the transmit path when nobody is
@@ -463,6 +491,51 @@ static bool node_create(uint32_t bitrate, bool loopback, bool self_test,
     if (twai_new_node_onchip(&cfg, &node) != ESP_OK) {
         node = NULL;
         return false;
+    }
+    node_normal = !loopback && !self_test && !listen_only;
+
+    /* Redo the driver's timing arithmetic to know what it applied, and put
+     * the requested SJW on top. The driver sets SJW to half of tseg2, at
+     * 250 kbit/s a single quantum of 200 ns; the hardware allows four. Timing
+     * can only be changed while the node is stopped, so this sits between
+     * creation and enable. */
+    const twai_timing_constraint_t lim = {
+        .brp_min = TWAI_LL_BRP_MIN, .brp_max = TWAI_LL_BRP_MAX,
+        .prop_max = TWAI_LL_PROP_MAX,
+        .tseg1_min = TWAI_LL_TSEG1_MIN, .tseg1_max = TWAI_LL_TSEG1_MAX,
+        .tseg2_min = TWAI_LL_TSEG2_MIN, .tseg2_max = TWAI_LL_TSEG2_MAX,
+        .sjw_max = TWAI_LL_SJW_MAX,
+    };
+    twai_timing_advanced_config_t adv = { 0 };
+    uint32_t got = twai_node_timing_calc_param(CAN_SRC_CLK_HZ, &cfg.bit_timing,
+                                               &lim, &adv);
+    bool known = (got == bitrate);
+    if (known && s_timing.sjw) {
+        uint8_t sjw = s_timing.sjw;
+        if (sjw > adv.tseg_2) {
+            sjw = adv.tseg_2;
+        }
+        if (sjw > TWAI_LL_SJW_MAX) {
+            sjw = TWAI_LL_SJW_MAX;
+        }
+        adv.sjw = sjw;
+        esp_err_t e = twai_node_reconfig_timing(node, &adv, NULL);
+        if (e != ESP_OK) {
+            ESP_LOGW(TAG, "SJW %u not applied: %s", sjw, esp_err_to_name(e));
+            known = false;
+        }
+    }
+    if (node_normal) {
+        s_timing.known = known;
+        if (known) {
+            uint8_t q = 1 + adv.prop_seg + adv.tseg_1 + adv.tseg_2;
+            s_timing.quanta = q;
+            s_timing.sp_actual = (uint16_t)((1u + adv.prop_seg + adv.tseg_1) * 1000u / q);
+            s_timing.sjw_actual = adv.sjw;
+            ESP_LOGI(TAG, "bit timing: %u quanta, sample point %u permille, SJW %u%s",
+                     q, s_timing.sp_actual, adv.sjw,
+                     (s_timing.sp_permill || s_timing.sjw) ? "" : " (driver default)");
+        }
     }
     const twai_event_callbacks_t cbs = {
         .on_tx_done = on_tx_done,
@@ -482,10 +555,45 @@ static bool node_create(uint32_t bitrate, bool loopback, bool self_test,
 static void node_destroy(void)
 {
     if (node) {
+        if (node_normal) {
+            twai_node_status_t st;
+            twai_node_record_t rec;
+            if (twai_node_get_info(node, &st, &rec) == ESP_OK) {
+                bus_err_base += rec.bus_err_num;
+            }
+        }
         twai_node_disable(node);
         twai_node_delete(node);
         node = NULL;
     }
+}
+
+void can_port_set_timing(uint16_t sp_permill, uint8_t sjw)
+{
+    bool changed = (s_timing.sp_permill != sp_permill || s_timing.sjw != sjw);
+    s_timing.sp_permill = sp_permill;
+    s_timing.sjw = sjw;
+    if (!changed || !running || !bus_lock) {
+        return;
+    }
+    /* Like the diagnosis: own the bus, replace the node, hand it back. */
+    if (xSemaphoreTake(bus_lock, pdMS_TO_TICKS(30000)) != pdTRUE) {
+        ESP_LOGW(TAG, "bus busy, new bit timing applies after the next restart");
+        return;
+    }
+    snprintf(bus_holder, sizeof(bus_holder), "timing");
+    bus_taken_ms = hal_now_ms(NULL);
+    node_destroy();
+    if (!node_create(CAN_BITRATE, false, false, false)) {
+        ESP_LOGE(TAG, "could not bring the TWAI node back up with the new timing");
+    }
+    bus_holder[0] = '\0';
+    xSemaphoreGive(bus_lock);
+}
+
+void can_port_timing(can_timing_t *out)
+{
+    *out = s_timing;
 }
 
 bool can_port_start(void)
@@ -636,15 +744,16 @@ bool can_diag_listen(const uint32_t *bitrates, size_t n, uint32_t ms_each,
             out[i] = diag_acc;
             continue;
         }
+        diag_have_last = false;
         diag_armed = true;
         vTaskDelay(pdMS_TO_TICKS(ms_each));
         diag_armed = false;
 
         out[i] = diag_acc;
         ESP_LOGI(TAG, "listen-only %u bit/s: %u frame(s), %u distinct ID(s), "
-                 "%u bus error(s)",
+                 "%u repeat(s), %u bus error(s)",
                  (unsigned)bitrates[i], (unsigned)diag_acc.frames, diag_acc.n_ids,
-                 (unsigned)diag_acc.errors);
+                 (unsigned)diag_acc.repeats, (unsigned)diag_acc.errors);
         node_destroy();
     }
 

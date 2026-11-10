@@ -257,6 +257,14 @@ function renderStatus(s) {
   missed.textContent = s.can.rxMissed;
   missed.style.color = s.can.rxMissed ? "var(--err)" : "";
   $("s-recov").textContent = s.can.recoveries;
+  /* What the controller samples with. Older firmware has no timing object. */
+  const tm = s.can.timing;
+  const tmTxt = !tm ? "–" : !tm.known ? "unbekannt"
+    : `${tm.quanta} Quanten, Abtastung ${(tm.samplePoint / 10).toFixed(1)} %, SJW ${tm.sjw}`
+      + (tm.custom ? "" : " (Standard)");
+  $("s-timing").textContent = tmTxt;
+  const tms = $("can-timing-state");
+  if (tms) tms.textContent = tmTxt;
   /* A single exchange is bounded to a few seconds; anything longer means one
      is stuck, and every other read will fail with "transport error" until it
      lets go. */
@@ -1564,6 +1572,9 @@ async function loadSettings() {
   $("co-on").checked = s.system.collectEnabled;
   $("co-id").value = s.system.collectCanIds || "0x451,0x441";
   $("sys-tz").value = s.system.tz;
+  $("can-sp").value = s.system.canSamplePoint ? s.system.canSamplePoint / 10 : "";
+  $("can-sjw").value = s.system.canSjw || "";
+  markUnsupported("card-timing", "canSamplePoint" in s.system, "CAN-Bit-Timing");
   /* Die rohe API sitzt mitten in der System-Karte zwischen Feldern, die jede
      Firmware kennt -- also einzeln sperren statt die ganze Karte. */
   markFieldsUnsupported(["sys-rawwrite", "sys-rawids"],
@@ -1658,6 +1669,10 @@ async function saveSettings() {
       }),
       em380Enabled: $("sys-em380").checked,
       tz: $("sys-tz").value,
+      ...(CAPS["card-timing"] === false ? {} : {
+        canSamplePoint: Math.round((Number($("can-sp").value) || 0) * 10),
+        canSjw: Number($("can-sjw").value) || 0,
+      }),
       ...(CAPS["card-contacts"] === false ? {} : { contacts: [0, 1].map((i) => ({
         enabled: $(`ct${i}-on`).checked,
         mode: $(`ct${i}-mode`).value,
@@ -1778,7 +1793,15 @@ function initApp() {
       /* While listening the node never drives the bus, not even the ACK bit.
          Errors seen here are on the wire or in the receive path; errors that
          show on the bus card but not here come from the node's own driving. */
-      if (best && best.bitrate === 250000) {
+      if (best && best.bitrate === 250000 && best.repeats > best.frames / 2) {
+        /* The same frame thousands of times in a row: nobody acknowledged
+           it, so the transmitter kept retrying. This device is the only
+           other node, and the sweep cannot judge the wire here. */
+        verdict += ` Beim Mithören kam dasselbe Frame ${best.repeats}-mal hintereinander: `
+          + "dieses Gerät ist der einzige andere Knoten am Bus. Ohne sein ACK wiederholt "
+          + "die Steuerung jedes Frame im Dauerlauf, die Busfehler aus dem Sweep sagen "
+          + "hier nichts über die Leitung. Die Steuerung erholt sich von selbst.";
+      } else if (best && best.bitrate === 250000) {
         verdict += best.errors
           ? ` Beim reinen Mithören sah der Controller in 2 s ${best.errors} Busfehler. `
             + "Die Störung liegt auf der Leitung oder im Empfangsweg, nicht am "

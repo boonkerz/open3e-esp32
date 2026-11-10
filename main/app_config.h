@@ -110,6 +110,11 @@ typedef struct {
      * decoded view of the same kind of broadcast traffic. */
     char raw_canids[CFG_RAW_IDS_MAX];
     char tz[CFG_STR_MAX];   /* POSIX TZ, default "CET-1CEST,M3.5.0,M10.5.0/3" */
+    /* CAN bit timing for experiments on a bus with errors. 0 = the driver's
+     * default (at 250 kbit/s: sample point 85 %, SJW 1 quantum). Sample
+     * point in permill of the bit time, SJW in quanta (1 to 4). */
+    uint16_t can_sample_permill;
+    uint8_t  can_sjw;
     /* What a bare "start charging" means: which storage unit, how much, and
      * for how long. Kept as settings rather than passed with every command so
      * that a Home Assistant switch has something to switch -- the hold itself
