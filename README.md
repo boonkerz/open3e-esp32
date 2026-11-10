@@ -180,7 +180,7 @@ Die Karte „CAN-Bus" zeigt vier Zähler, die Verschiedenes bedeuten:
 | Fehlerzähler TX / RX | TEC und REC des Controllers | springen bei einem Fehler hoch (TX um 8, RX um 1), gehen mit jedem fehlerfreien Frame um 1 zurück; ein kurzer Ausschlag ist normal und meist schon weg, bevor die Seite ihn abholt |
 | Frames verpasst | Antworten auf die laufende Anfrage, die der Empfangs-Interrupt nicht mehr in die Warteschlange bekam | die einzigen Frames, die diese Firmware wirklich verworfen hat; sollte 0 sein. Broadcast-Frames der Anlage, die niemand angefordert hat, zählen nicht mit |
 | Bus-Off-Recovery | wie oft der Controller nach `bus-off` neu gestartet wurde | 0 auf einem gesunden Bus |
-| Bit-Timing | Zeitquanten je Bit, Abtastzeitpunkt und SJW, mit denen der Controller gerade läuft | Treiberstandard bei 250 kBit/s: 20 Quanten, 85 %, SJW 1; einstellbar unter *Einstellungen → System → CAN-Bit-Timing* |
+| Bit-Timing | Zeitquanten je Bit, Abtastzeitpunkt und SJW, mit denen der Controller gerade läuft | Standard bei 250 kBit/s: 20 Quanten, 85 %, SJW 3; einstellbar unter *Einstellungen → System → CAN-Bit-Timing* |
 
 Die Aufschlüsselung liest die Firmware direkt aus dem Fehlerregister des
 Controllers, weil der ESP-IDF-Treiber davon nur vier Flags weiterreicht und
@@ -191,17 +191,22 @@ ein Abschluss-, Masse- oder Störungsproblem, auch wenn alle Werte ankommen.
 
 ### Bit-Timing
 
-Der ESP-IDF-Treiber legt für 250 kBit/s 20 Zeitquanten je Bit, den
-Abtastzeitpunkt bei 85 % und die Resynchronisation (SJW) auf ein Quantum,
-also 200 ns. Unter *Einstellungen → System → CAN-Bit-Timing* lassen sich
-Abtastzeitpunkt (50 bis 90 %) und SJW (1 bis 4 Quanten) ändern; leer heißt
-Treiberstandard. Die Änderung gilt beim Speichern sofort, der Controller
-startet dafür kurz neu, und `/api/status` zeigt unter `can.timing`, was
-angewendet wurde. Gedacht für Anlagen, die auf der Karte „CAN-Bus"
-Fehler am Frame-Ende häufen (ACK-Slot, ACK-Delimiter, CRC-Delimiter): je
-eine Stunde mit 75 %, 80 % und 87,5 % sowie mit SJW 4 laufen lassen und die
-Fehlerrate vergleichen. Ändert sie sich nicht, ist das Timing als Ursache
-raus. Ein Wert, der die Rate steigen lässt, wird einfach wieder geleert.
+Der ESP-IDF-Treiber legt für 250 kBit/s 20 Zeitquanten je Bit und den
+Abtastzeitpunkt bei 85 %; die Resynchronisation (SJW) setzt er auf ein
+Quantum, also 200 ns. Das ist am Viessmann-Bus hinter dem Isolator des
+Waveshare-Boards zu wenig: rund drei Busfehler je Sekunde, fast alle am
+Frame-Ende (ACK-Slot, ACK-Delimiter, CRC-Delimiter) und auf eigenen
+Sendungen, die mit SJW 3 vollständig verschwanden und beim Zurückstellen
+sofort wiederkamen (vier Stunden Messreihe, ioBroker.e3oncan #262). Die
+Firmware setzt den SJW deshalb auf die volle Länge des zweiten
+Phasenabschnitts, bei 250 kBit/s drei Quanten. Unter *Einstellungen → System
+→ CAN-Bit-Timing* lassen sich Abtastzeitpunkt (50 bis 90 %) und SJW (1 bis 4
+Quanten) ändern; leer heißt dieser Standard. Die Änderung gilt beim Speichern
+sofort, der Controller startet dafür kurz neu, und `/api/status` zeigt unter
+`can.timing`, was angewendet wurde. Ein SJW über dem Phasenabschnitt wird
+gekappt. Häuft eine Anlage trotzdem Fehler am Frame-Ende, je eine Stunde mit
+75 %, 80 % und 87,5 % laufen lassen und die Fehlerrate vergleichen; ein Wert,
+der die Rate steigen lässt, wird einfach wieder geleert.
 Ein **„no response"** oder ein fehlgeschlagener Read ist dagegen kein
 Busfehler: die Anfrage wurde gesendet und quittiert, die ECU hat innerhalb der
 Frist nicht geantwortet. Die beiden Dinge hängen trotzdem zusammen. Trifft ein

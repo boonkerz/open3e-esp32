@@ -495,10 +495,13 @@ static bool node_create(uint32_t bitrate, bool loopback, bool self_test,
     node_normal = !loopback && !self_test && !listen_only;
 
     /* Redo the driver's timing arithmetic to know what it applied, and put
-     * the requested SJW on top. The driver sets SJW to half of tseg2, at
-     * 250 kbit/s a single quantum of 200 ns; the hardware allows four. Timing
-     * can only be changed while the node is stopped, so this sits between
-     * creation and enable. */
+     * our SJW on top. The driver sets SJW to half of tseg2, at 250 kbit/s a
+     * single quantum of 200 ns. That is too little for the Viessmann bus
+     * behind the Waveshare isolator: about three bus errors per second,
+     * mostly at the frame end, that vanished completely with SJW = tseg2
+     * (ioBroker.e3oncan #262). So the default is the widest SJW the segment
+     * allows; a configured value overrides it. Timing can only be changed
+     * while the node is stopped, so this sits between creation and enable. */
     const twai_timing_constraint_t lim = {
         .brp_min = TWAI_LL_BRP_MIN, .brp_max = TWAI_LL_BRP_MAX,
         .prop_max = TWAI_LL_PROP_MAX,
@@ -510,8 +513,8 @@ static bool node_create(uint32_t bitrate, bool loopback, bool self_test,
     uint32_t got = twai_node_timing_calc_param(CAN_SRC_CLK_HZ, &cfg.bit_timing,
                                                &lim, &adv);
     bool known = (got == bitrate);
-    if (known && s_timing.sjw) {
-        uint8_t sjw = s_timing.sjw;
+    if (known) {
+        uint8_t sjw = s_timing.sjw ? s_timing.sjw : adv.tseg_2;
         if (sjw > adv.tseg_2) {
             sjw = adv.tseg_2;
         }
@@ -534,7 +537,7 @@ static bool node_create(uint32_t bitrate, bool loopback, bool self_test,
             s_timing.sjw_actual = adv.sjw;
             ESP_LOGI(TAG, "bit timing: %u quanta, sample point %u permille, SJW %u%s",
                      q, s_timing.sp_actual, adv.sjw,
-                     (s_timing.sp_permill || s_timing.sjw) ? "" : " (driver default)");
+                     (s_timing.sp_permill || s_timing.sjw) ? "" : " (default)");
         }
     }
     const twai_event_callbacks_t cbs = {

@@ -799,14 +799,14 @@
 
   <div class="card" id="card-timing">
     <h2>CAN-Bit-Timing</h2>
-    <p class="hint">Für Versuche bei Busfehlern. Leer heißt Treiberstandard,
-      bei 250 kBit/s sind das 20 Zeitquanten, Abtastung bei 85 % und SJW 1.
+    <p class="hint">Für Versuche bei Busfehlern. Leer heißt Standard,
+      bei 250 kBit/s sind das 20 Zeitquanten, Abtastung bei 85 % und SJW 3.
       Gilt beim Speichern sofort, der Controller startet dafür kurz neu. Erst
       eine Stunde mit einem Wert laufen lassen und die Karte „CAN-Bus"
       vergleichen, dann den nächsten.</p>
     <div class="row">
       <label><span>Abtastzeitpunkt (%)</span><input type="number" id="can-sp" min="50" max="90" step="0.5" placeholder="Standard (85)"></label>
-      <label><span>SJW (Quanten, 1 bis 4)</span><input type="number" id="can-sjw" min="1" max="4" step="1" placeholder="Standard (1)"></label>
+      <label><span>SJW (Quanten, 1 bis 4)</span><input type="number" id="can-sjw" min="1" max="4" step="1" placeholder="Standard (3)"></label>
     </div>
     <p class="small muted" style="margin:-4px 0 12px">Angewendet:
       <span class="mono" id="can-timing-state">–</span></p>
