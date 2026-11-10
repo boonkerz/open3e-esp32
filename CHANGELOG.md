@@ -79,6 +79,15 @@ bis dahin auf der Flash-Seite lag.
 
 ### Geändert
 
+- **Datenpunktdatenbank auf open3e vom 14.10.2026** (Definitionen 20261014,
+  vorher 20260705). DID 1593 BufferHysteresis wird dekodiert statt roh
+  ausgegeben (Ein- und Ausschaltpunkt in °C, schreibbar); der Name von
+  DID 2428 hatte ein Leerzeichen („…FunctionS ettings"), wer den Punkt
+  gewählt hat, bekommt nach dem Update ein neues Topic. E3onCAN auf den
+  Stand vom 04.11.2026, die E380-Tabelle ist unverändert. Die Datenbank
+  liegt auf der Storage-Partition: `storage.bin` einspielen, das löscht
+  Auswahl und Scan-Ergebnis.
+
 - **Frames werden nach verlorener Arbitrierung oder einem Busfehler
   wiederholt**, bis zu dreimal. Bisher sendete der Controller jedes Frame
   genau einmal; traf ein Busfehler die Anfrage oder fing ein anderer Knoten

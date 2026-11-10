@@ -19,13 +19,13 @@ OPEN3E_URL = "https://github.com/open3e/open3e.git"
 # two builds of the same firmware commit must not be able to disagree about it.
 # A branch name cannot promise that. (open3e's default branch is `master`, not
 # `main` -- cloning the wrong one fails outright.)
-OPEN3E_REF = "ade743ba6f4bd3afa16b16ed56ccd4038e748f6d"   # master, 2026-08-25
+OPEN3E_REF = "1cbd58378c77dcdcc12aab97c5e5a7add50e75d4"   # master, 2026-10-14
 
 # E3onCAN adds the passively broadcast datapoints of the Viessmann energy
 # meters, which open3e does not cover: the E380 answers no UDS request, it only
 # announces itself on the bus.
 E3ONCAN_URL = "https://github.com/MyHomeMyData/E3onCAN.git"
-E3ONCAN_REF = "833d3ab6d8f6c40b083ae895a7fe26ca1760a502"   # main, 2026-07-15
+E3ONCAN_REF = "3ebf7551822f5aef71a2ae89c1966aa1f3721e74"   # main, 2026-11-04
 
 ROOT = Path(__file__).resolve().parent.parent
 CACHE = ROOT / ".cache" / "open3e"
