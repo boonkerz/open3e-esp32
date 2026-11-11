@@ -101,7 +101,11 @@ static void do_read(uint16_t ecu, const cJSON *data)
 }
 
 /* {"mode":"grid","addr":"0x6A1","watts":-2000,"seconds":1800}
+ * {"mode":"grid","addr":"0x6A1","charge":2000,"seconds":1800}
  * {"mode":"grid","stop":true}
+ *
+ * "watts" is the grid setpoint as written; "charge" is power into the
+ * storage, with the setpoint re-derived from the house load (hold.h).
  *
  * Negative watts draw from the grid. Reachable from MQTT on purpose, unlike
  * forcing a single write: this is meant to be driven by a tariff, and it is
@@ -160,10 +164,19 @@ static void do_grid(uint16_t ecu, const cJSON *root)
     }
 
     const cJSON *jw = cJSON_GetObjectItemCaseSensitive(root, "watts");
+    const cJSON *jc = cJSON_GetObjectItemCaseSensitive(root, "charge");
     const cJSON *js = cJSON_GetObjectItemCaseSensitive(root, "seconds");
+    if (cJSON_IsNumber(jc) && cJSON_IsNumber(js)) {
+        double w = jc->valuedouble < 0 ? -jc->valuedouble : jc->valuedouble;
+        if (!charge_hold_start(ecu, (uint16_t)w, (uint32_t)js->valuedouble,
+                               err, sizeof(err))) {
+            reply_error("charge hold refused: %s", err);
+        }
+        return;
+    }
     if (!cJSON_IsNumber(jw) || !cJSON_IsNumber(js)) {
-        reply_error("grid expects \"watts\" and \"seconds\", \"on\": true/false, "
-                    "\"stop\": true, or \"power\"/\"minutes\"");
+        reply_error("grid expects \"watts\" or \"charge\" and \"seconds\", "
+                    "\"on\": true/false, \"stop\": true, or \"power\"/\"minutes\"");
         return;
     }
     if (!grid_hold_start(ecu, (int16_t)jw->valuedouble,

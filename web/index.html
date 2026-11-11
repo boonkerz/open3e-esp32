@@ -907,18 +907,32 @@
     <h2>Aus dem Netz laden</h2>
     <p class="hint">Hält den Sollwert am Netzanschluss (DID 2188) gegen die
       Eigenverbrauchsregelung. Die schreibt alle rund zehn Sekunden eine Null
-      nach; hier wird alle zwei Sekunden dagegengehalten. <b>Negative Werte
-      ziehen aus dem Netz</b>, positive speisen ein.</p>
+      nach; hier wird alle zwei Sekunden dagegengehalten.</p>
+    <p class="hint"><b>Der Sollwert ist der Netzbezug, nicht die Ladeleistung.</b>
+      -2000 heißt „insgesamt 2000 W aus dem Netz ziehen"; davon versorgt die
+      Anlage zuerst das Haus, nur der Rest lädt den Speicher. Bei 1500 W
+      Hausverbrauch kommen so 500 W in der Batterie an. Wer eine bestimmte
+      Ladeleistung will, nimmt die zweite Zeile: dort wird der Netzsollwert
+      alle zehn Sekunden aus Netz- und Speicherleistung (DID 1603 und 1836)
+      nachgeführt.</p>
     <div class="row">
       <label><span>ECU</span><select id="gh-ecu"></select></label>
-      <label><span>Leistung (W)</span>
+      <label><span>Netzbezug (W, negativ = Bezug)</span>
         <input type="number" id="gh-watts" value="-2000" min="-6000" max="6000"
                step="100" style="width:120px"></label>
       <label><span>Dauer (Minuten)</span>
         <input type="number" id="gh-min" value="15" min="1" max="60"
                style="width:110px"></label>
-      <button class="btn danger" id="gh-start" style="flex:0 0 auto">Halten</button>
+      <button class="btn danger" id="gh-start" style="flex:0 0 auto">Netzbezug halten</button>
       <button class="btn sec" id="gh-stop" style="flex:0 0 auto">Beenden</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label><span>Speicher laden mit (W)</span>
+        <input type="number" id="gh-charge" value="2000" min="100" max="6000"
+               step="100" style="width:120px"></label>
+      <button class="btn danger" id="gh-charge-start" style="flex:0 0 auto">Laden</button>
+      <span class="small muted">gleiche ECU und Dauer wie oben; der Netzbezug
+        wird höchstens 6000 W, eingespeist wird nie</span>
     </div>
     <p class="small muted" style="margin:12px 0 0">Höchstens <b>6000 W</b> und
       <b>60 Minuten</b> je Anforderung — die Grenzen stecken in der Firmware,

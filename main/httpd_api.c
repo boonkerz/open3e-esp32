@@ -384,13 +384,17 @@ static esp_err_t h_status(httpd_req_t *r)
              "\"mqtt\": {\"connected\": %s, \"published\": %u, \"errors\": %u, "
              "\"haSensors\": %d, \"haControls\": %d}, "
              "\"grid\": {\"active\": %s, \"watts\": %d, \"remainingS\": %u, "
-             "\"writes\": %u, \"failures\": %u, \"storage\": \"%s\", "
+             "\"writes\": %u, \"failures\": %u, "
+             "\"charge\": %u, \"gridPower\": %d, \"storagePower\": %d, "
+             "\"adjusts\": %u, \"readings\": %s, \"storage\": \"%s\", "
              "\"storageRemainingS\": %u, \"storageWrites\": %u, "
              "\"storageFailures\": %u}, ",
              mq.connected ? "true" : "false", (unsigned)mq.published,
              (unsigned)mq.errors, ha_sensors, ha_controls,
              gh.active ? "true" : "false", gh.watts, (unsigned)gh.remaining_s,
              (unsigned)gh.writes, (unsigned)gh.failures,
+             (unsigned)gh.charge_w, gh.grid_w, gh.storage_w,
+             (unsigned)gh.adjusts, gh.readings ? "true" : "false",
              storage_mode_name(sh.mode), (unsigned)sh.remaining_s,
              (unsigned)sh.writes, (unsigned)sh.failures);
     o3e_buf_adds(&b, t);
@@ -1047,13 +1051,21 @@ static esp_err_t h_grid(httpd_req_t *r)
         return send_json(r, "{\"ok\": true}");
     }
 
+    /* {"charge": 2000, "ecu": ..., "seconds": ...}: power into the storage,
+     * the grid setpoint follows (hold.h, CHARGE_DID_GRID). */
+    const cJSON *jc = cJSON_GetObjectItem(j, "charge");
     const cJSON *jw = cJSON_GetObjectItem(j, "watts");
-    if (!cJSON_IsNumber(jw)) {
+    if (!cJSON_IsNumber(jw) && !cJSON_IsNumber(jc)) {
         cJSON_Delete(j);
-        return send_err(r, 400, "watts is required");
+        return send_err(r, 400, "watts or charge is required");
     }
     uint16_t ecu = sel_u16(j, "ecu", 0);
-    int16_t watts = (int16_t)jw->valuedouble;
+    bool charge = cJSON_IsNumber(jc);
+    double wd = charge ? jc->valuedouble : jw->valuedouble;
+    if (charge && wd < 0) {
+        wd = -wd;
+    }
+    int16_t watts = (int16_t)wd;
     uint32_t seconds = sel_u32(j, "seconds", 0);
     cJSON_Delete(j);
     if (!ecu) {
@@ -1061,7 +1073,10 @@ static esp_err_t h_grid(httpd_req_t *r)
     }
 
     char err[128] = "";
-    if (!grid_hold_start(ecu, watts, seconds, err, sizeof(err))) {
+    bool started = charge
+        ? charge_hold_start(ecu, (uint16_t)watts, seconds, err, sizeof(err))
+        : grid_hold_start(ecu, watts, seconds, err, sizeof(err));
+    if (!started) {
         return send_err(r, 400, err[0] ? err : "cannot start the hold");
     }
     /* Remember what was asked for, so the Home Assistant switch and this form

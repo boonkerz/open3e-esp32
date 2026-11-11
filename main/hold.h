@@ -53,6 +53,22 @@
  * are simply not the same mechanism. */
 #define STORAGE_MODE_DID    2239
 
+/* Charging at a chosen power is a loop, not a value.
+ *
+ * 2188 sets the power at the grid connection point, and the installation
+ * meets it exactly: -2000 means "draw 2000 W from the grid in total". The
+ * house is served first and only the remainder reaches the storage -- an
+ * evening with 1550 W of house load and -2000 W held gave 2011 W drawn and
+ * 457 W into the battery. So "charge at 2000 W" has to be re-derived from
+ * what the house currently takes, and that changes. The charge hold reads
+ * the two measurements below from the same ECU every CHARGE_PERIOD_MS and
+ * moves the grid setpoint so that the storage sees the wanted power. */
+#define CHARGE_DID_GRID      1603   /* PointOfCommonCouplingPower, ActivePower: positive = draw */
+#define CHARGE_DID_STORAGE   1836   /* ElectricalEnergyStorageCurrentPower: negative = charging */
+#define CHARGE_PERIOD_MS     10000  /* the setpoint takes ~5 s to show in the readings */
+#define CHARGE_DEADBAND_W    50     /* no rewrite for less than this */
+#define CHARGE_STEP_MAX_W    1500   /* per adjustment, so a bad reading cannot slam it */
+
 /* The third field of 2226 and the trailing one of 2188 -- the same number in
  * both, in every message this installation's manager sends. Repeated rather
  * than invented, because nothing here knows what it means.
@@ -114,11 +130,17 @@ typedef enum {
 typedef struct {
     bool     active;
     uint16_t ecu;
-    int16_t  watts;        /* negative draws from the grid */
+    int16_t  watts;        /* negative draws from the grid; the loop moves it */
     uint32_t remaining_s;
     uint32_t writes;
     uint32_t failures;
     char     last_error[96];
+    /* The charge loop: 0 when the grid setpoint is held as given. */
+    uint16_t charge_w;     /* wanted power into the storage */
+    int16_t  grid_w;       /* last reading of CHARGE_DID_GRID */
+    int16_t  storage_w;    /* last reading of CHARGE_DID_STORAGE */
+    uint32_t adjusts;      /* setpoint changes made by the loop */
+    bool     readings;     /* the last pair of readings succeeded */
 } grid_hold_status_t;
 
 typedef struct {
@@ -146,6 +168,13 @@ bool grid_hold_start(uint16_t ecu, int16_t watts, uint32_t seconds,
  * manager restores it within ten seconds anyway, and writing one more time
  * would be one more chance to write it wrongly. */
 void grid_hold_stop(void);
+
+/* Hold the grid setpoint such that the storage charges with `watts`, see
+ * the note at CHARGE_DID_GRID. Same caps as the grid hold; the setpoint
+ * never asks for more than GRID_HOLD_MAX_W from the grid and never for
+ * feed-in. Stopped like a grid hold. */
+bool charge_hold_start(uint16_t ecu, uint16_t watts, uint32_t seconds,
+                       char *err, size_t err_sz);
 
 /* Start from the stored settings, or stop. This is what a Home Assistant
  * switch flips: the switch has no room to carry a power and a duration, so it

@@ -10,6 +10,7 @@
 #include "freertos/task.h"
 
 #include "app_config.h"
+#include "cJSON.h"
 #include "mqtt_pub.h"
 #include "poller.h"
 
@@ -43,6 +44,14 @@ static slot_t            slots[N_SLOTS];
 static int16_t           grid_watts;
 static storage_mode_t    storage_mode;
 
+/* The charge loop; all under `lock` except where noted. */
+static uint16_t          charge_w;          /* 0: the grid setpoint is held as given */
+static int16_t           charge_grid_w;
+static int16_t           charge_storage_w;
+static uint32_t          charge_adjusts;
+static bool              charge_readings;
+static int64_t           charge_next_us;    /* hold task only */
+
 static void put_i32(uint8_t *p, int32_t v)
 {
     p[0] = (uint8_t)(v & 0xFF);
@@ -64,6 +73,94 @@ static void as_json(char *out, size_t out_sz, const uint8_t *b, uint8_t len)
 }
 
 static bool ensure_task(char *err, size_t err_sz);
+
+/* Grid setpoint bytes for `w` watts, the shape grid_hold_start() writes. */
+static void grid_bytes(uint8_t *b, int16_t w)
+{
+    b[0] = (uint8_t)((uint16_t)w & 0xFF);
+    b[1] = (uint8_t)(((uint16_t)w >> 8) & 0xFF);
+    put_i32(b + 2, HOLD_VALIDITY);
+}
+
+/* One decoded reading as a whole number of watts. `field` picks a member of
+ * a complex datapoint, NULL takes a bare scalar. */
+static bool read_watts(uint16_t ecu, uint16_t did, const char *field, int16_t *out)
+{
+    char err[64];
+    char *json = poller_read_now(ecu, did, err, sizeof(err));
+    if (!json) {
+        ESP_LOGW(TAG, "0x%03X.%u: %s", ecu, did, err);
+        return false;
+    }
+    cJSON *v = cJSON_Parse(json);
+    free(json);
+    if (!v) {
+        return false;
+    }
+    const cJSON *n = field ? cJSON_GetObjectItemCaseSensitive(v, field) : v;
+    bool ok = cJSON_IsNumber(n);
+    if (ok) {
+        double d = n->valuedouble;
+        if (d > INT16_MAX) d = INT16_MAX;
+        if (d < INT16_MIN) d = INT16_MIN;
+        *out = (int16_t)d;
+    }
+    cJSON_Delete(v);
+    return ok;
+}
+
+/* What the grid setpoint has to be for the storage to take `want` watts,
+ * given the current readings: the house's net demand is whatever the grid
+ * delivers beyond what the storage takes, and that demand plus the wanted
+ * charge is the draw to ask for. Never feed-in, never over the cap. */
+static int16_t charge_setpoint(int16_t grid_w, int16_t storage_w, uint16_t want)
+{
+    int32_t charging = -(int32_t)storage_w;          /* positive while charging */
+    int32_t house    = (int32_t)grid_w - charging;   /* may be negative with PV */
+    int32_t draw     = house + (int32_t)want;
+    if (draw < 0) {
+        draw = 0;
+    }
+    if (draw > GRID_HOLD_MAX_W) {
+        draw = GRID_HOLD_MAX_W;
+    }
+    return (int16_t)-draw;
+}
+
+/* Hold task only. Reads both powers and moves the grid setpoint towards the
+ * wanted charge, at most CHARGE_STEP_MAX_W at a time. A failed reading
+ * leaves the setpoint where it is: a known value beats a guess. */
+static void charge_adjust(uint16_t ecu)
+{
+    int16_t g = 0, s = 0;
+    bool ok = read_watts(ecu, CHARGE_DID_GRID, "ActivePower", &g) &&
+              read_watts(ecu, CHARGE_DID_STORAGE, NULL, &s);
+    xSemaphoreTake(lock, portMAX_DELAY);
+    charge_readings = ok;
+    if (!ok || !charge_w || !slots[SLOT_GRID].active) {
+        xSemaphoreGive(lock);
+        return;
+    }
+    charge_grid_w = g;
+    charge_storage_w = s;
+    int32_t target = charge_setpoint(g, s, charge_w);
+    int32_t cur = grid_watts;
+    int32_t next = target;
+    if (next < cur - CHARGE_STEP_MAX_W) next = cur - CHARGE_STEP_MAX_W;
+    if (next > cur + CHARGE_STEP_MAX_W) next = cur + CHARGE_STEP_MAX_W;
+    bool change = (next > cur ? next - cur : cur - next) >= CHARGE_DEADBAND_W;
+    if (change) {
+        grid_watts = (int16_t)next;
+        grid_bytes(slots[SLOT_GRID].bytes, grid_watts);
+        charge_adjusts++;
+    }
+    xSemaphoreGive(lock);
+    if (change) {
+        ESP_LOGI(TAG, "charge loop: grid %d W, storage %d W, want %u W -> setpoint %d W",
+                 g, s, (unsigned)charge_w, (int)next);
+        hold_publish();
+    }
+}
 
 static bool slot_start(int idx, uint16_t ecu, uint16_t did,
                        const uint8_t *bytes, uint8_t len, uint32_t seconds,
@@ -182,6 +279,20 @@ static void hold_task(void *arg)
             }
         }
 
+        /* The charge loop rides on the grid slot: once that is gone, so is
+         * the loop; while it runs, the setpoint is re-derived every period. */
+        xSemaphoreTake(lock, portMAX_DELAY);
+        bool loop = charge_w && slots[SLOT_GRID].active;
+        uint16_t loop_ecu = slots[SLOT_GRID].ecu;
+        if (!slots[SLOT_GRID].active) {
+            charge_w = 0;
+        }
+        xSemaphoreGive(lock);
+        if (loop && esp_timer_get_time() >= charge_next_us) {
+            charge_next_us = esp_timer_get_time() + (int64_t)CHARGE_PERIOD_MS * 1000;
+            charge_adjust(loop_ecu);
+        }
+
         /* Every fifth turn, so a countdown on a dashboard moves without a
          * message every two seconds. */
         if (any && ++turns % 5 == 0) {
@@ -242,20 +353,65 @@ void hold_note_foreign(uint16_t did)
 /* ------------------------------------------------------------------ */
 /* the grid setpoint                                                    */
 
-bool grid_hold_start(uint16_t ecu, int16_t w, uint32_t seconds,
-                     char *err, size_t err_sz)
+static bool grid_start(uint16_t ecu, int16_t w, uint32_t seconds,
+                       uint16_t charge, char *err, size_t err_sz)
 {
     if (w > GRID_HOLD_MAX_W || w < -GRID_HOLD_MAX_W) {
         snprintf(err, err_sz, "%d W is beyond the %d W limit", w, GRID_HOLD_MAX_W);
         return false;
     }
     uint8_t b[6];
-    b[0] = (uint8_t)((uint16_t)w & 0xFF);
-    b[1] = (uint8_t)(((uint16_t)w >> 8) & 0xFF);
-    put_i32(b + 2, HOLD_VALIDITY);
+    grid_bytes(b, w);
+    if (lock) {
+        xSemaphoreTake(lock, portMAX_DELAY);
+    }
     grid_watts = w;
+    charge_w = charge;
+    charge_adjusts = 0;
+    charge_readings = false;
+    if (lock) {
+        xSemaphoreGive(lock);
+    }
     return slot_start(SLOT_GRID, ecu, GRID_HOLD_DID, b, sizeof(b), seconds,
                       err, err_sz);
+}
+
+bool grid_hold_start(uint16_t ecu, int16_t w, uint32_t seconds,
+                     char *err, size_t err_sz)
+{
+    return grid_start(ecu, w, seconds, 0, err, err_sz);
+}
+
+bool charge_hold_start(uint16_t ecu, uint16_t watts, uint32_t seconds,
+                       char *err, size_t err_sz)
+{
+    if (watts == 0 || watts > GRID_HOLD_MAX_W) {
+        snprintf(err, err_sz, "the charge power must be between 1 and %d W",
+                 GRID_HOLD_MAX_W);
+        return false;
+    }
+    /* Start from what the house takes right now; if that cannot be read,
+     * start from the wanted power alone and let the loop find the rest. */
+    int16_t g = 0, s = 0;
+    int16_t w = -(int16_t)watts;
+    bool ok = read_watts(ecu, CHARGE_DID_GRID, "ActivePower", &g) &&
+              read_watts(ecu, CHARGE_DID_STORAGE, NULL, &s);
+    if (ok) {
+        w = charge_setpoint(g, s, watts);
+    }
+    if (!grid_start(ecu, w, seconds, watts, err, err_sz)) {
+        return false;
+    }
+    xSemaphoreTake(lock, portMAX_DELAY);
+    charge_grid_w = g;
+    charge_storage_w = s;
+    charge_readings = ok;
+    xSemaphoreGive(lock);
+    charge_next_us = esp_timer_get_time() + (int64_t)CHARGE_PERIOD_MS * 1000;
+    ESP_LOGW(TAG, "charge loop: want %u W into the storage, grid %d W, storage %d W, "
+             "starting at %d W", (unsigned)watts, g, s, w);
+    hold_publish();
+    return true;
 }
 
 void hold_init(void)
@@ -301,6 +457,11 @@ void grid_hold_status(grid_hold_status_t *out)
     out->writes = s->writes;
     out->failures = s->fails;
     snprintf(out->last_error, sizeof(out->last_error), "%s", s->last_error);
+    out->charge_w = s->active ? charge_w : 0;
+    out->grid_w = charge_grid_w;
+    out->storage_w = charge_storage_w;
+    out->adjusts = charge_adjusts;
+    out->readings = charge_readings;
     xSemaphoreGive(lock);
 }
 
@@ -388,7 +549,7 @@ void hold_publish(void)
         mqtt_cfg_t mq;
         sys_cfg_t  sys;
         char       topic[CFG_TOPIC_MAX + 8];
-        char       payload[288];
+        char       payload[400];
     } b;
     static SemaphoreHandle_t b_lock;
     if (!b_lock) {
@@ -413,11 +574,15 @@ void hold_publish(void)
     snprintf(b.topic, sizeof(b.topic), "%s/hold", b.mq.base_topic);
     snprintf(b.payload, sizeof(b.payload),
              "{\"active\": %s, \"power\": %u, \"minutes\": %u, "
+             "\"setpoint\": %d, \"charge\": %u, \"gridPower\": %d, "
+             "\"storagePower\": %d, \"adjusts\": %u, "
              "\"remainingS\": %u, \"writes\": %u, \"failures\": %u, "
              "\"storage\": \"%s\", \"storageRemainingS\": %u, "
              "\"storageWrites\": %u, \"storageFailures\": %u}",
              g.active ? "true" : "false",
              (unsigned)b.sys.grid_watts, (unsigned)b.sys.grid_minutes,
+             g.watts, (unsigned)g.charge_w, g.grid_w, g.storage_w,
+             (unsigned)g.adjusts,
              (unsigned)g.remaining_s, (unsigned)g.writes, (unsigned)g.failures,
              storage_mode_name(s.mode), (unsigned)s.remaining_s,
              (unsigned)s.writes, (unsigned)s.failures);

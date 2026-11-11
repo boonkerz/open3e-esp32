@@ -287,8 +287,17 @@ function renderStatus(s) {
   const nowrite = (active, writes) => active && !writes;
   const gs = $("gh-state");
   if (gs) {
+    /* The charge loop shows its two readings next to the setpoint it chose,
+       so a setpoint that looks odd can be checked against what it was
+       derived from. */
+    const loop = g.active && g.charge
+      ? `Lädt mit Ziel ${g.charge} W: Speicher ${-(g.storagePower || 0)} W, `
+        + `Netz ${g.gridPower || 0} W, Sollwert ${g.watts} W`
+        + (g.readings ? "" : " — Messwerte gerade nicht lesbar, Sollwert bleibt")
+        + `, ${g.adjusts || 0} Anpassungen`
+      : `Aktiv: ${g.watts} W Netzbezug`;
     gs.textContent = g.active
-      ? `Aktiv: ${g.watts} W, noch ${fmtDuration(g.remainingS)}`
+      ? `${loop}, noch ${fmtDuration(g.remainingS)}`
         + ` · ${g.writes} Schreibvorgänge` + (g.failures ? `, ${g.failures} Fehler` : "")
         + (nowrite(g.active, g.writes) ? " — noch kein Schreibvorgang gelungen, ECU-Adresse prüfen" : "")
       : "Nicht aktiv — die Anlage regelt selbst.";
@@ -2225,6 +2234,19 @@ function initApp() {
     try {
       await api("/api/grid", { method: "POST", body: JSON.stringify({ stop: true }) });
       toast("Beendet.", "ok");
+    } catch (e) { toast(e.message, "err"); }
+  };
+  $("gh-charge-start").onclick = async () => {
+    const charge = Math.abs(Number($("gh-charge").value));
+    const minutes = Number($("gh-min").value);
+    if (!confirm(`Speicher mit ${charge} W laden, ${minutes} Minuten lang?\n\n`
+               + `Der Netzsollwert wird dafür aus Hausverbrauch und Ladeleistung `
+               + `nachgeführt, höchstens 6000 W Bezug. Nach Ablauf regelt die `
+               + `Anlage von selbst weiter.`)) return;
+    try {
+      await api("/api/grid", { method: "POST", body: JSON.stringify({
+        ecu: Number($("gh-ecu").value), charge, seconds: minutes * 60 }) });
+      toast("Laden gestartet.", "ok");
     } catch (e) { toast(e.message, "err"); }
   };
 

@@ -13,6 +13,16 @@ bis dahin auf der Flash-Seite lag.
 
 ### Hinzugefügt
 
+- **Speicher laden mit fester Leistung.** Der Netzsollwert (DID 2188) ist
+  der Bezug am Netzanschluss, nicht die Ladeleistung: das Haus wird zuerst
+  versorgt, nur der Rest lädt. Bei -2000 W und 1550 W Hausverbrauch kamen
+  457 W in der Batterie an. Neu neben dem gehaltenen Netzbezug: „Speicher
+  laden mit" in Watt; die Firmware liest alle zehn Sekunden Netzleistung
+  (DID 1603) und Speicherleistung (DID 1836) und führt den Sollwert nach,
+  höchstens 1500 W je Schritt, nie über 6000 W Bezug, nie Einspeisung. Per
+  `POST /api/grid` mit `charge`, auf dem Befehlskanal
+  `{"mode":"grid","charge":2000,"seconds":1800}`; `/api/status` und
+  `<Basis>/hold` zeigen Ziel, beide Messwerte und den Sollwert.
 - **Retained je Datenpunkt** (#13, Spoon3er): Häkchen „Ret." in der
   Datenpunkt-Tabelle, Feld `retain` in `points.json`, Standard aus. Der
   Broker behält den letzten Wert, ein neu verbindender Client bekommt ihn
