@@ -30,7 +30,11 @@ const char *uds_strerror(uds_result_t r)
     switch (r.err) {
     case UDS_OK:            return "ok";
     case UDS_ERR_TIMEOUT:   return "no response";
-    case UDS_ERR_TRANSPORT: return "transport error";
+    /* Both keep the "transport error" prefix clients already know from
+     * rawread; the suffix is what tells a frame that never left (busy bus,
+     * see can_port.c hal_send) from a response that fell apart. */
+    case UDS_ERR_TRANSPORT: return "transport error: protocol";
+    case UDS_ERR_SEND:      return "transport error: send failed";
     case UDS_ERR_MALFORMED: return "malformed response";
     case UDS_ERR_TOO_LONG:  return "response too long";
     case UDS_ERR_NEGATIVE:
@@ -49,6 +53,7 @@ static uds_err_t map_transport(isotp_err_t e)
     case ISOTP_OK:           return UDS_OK;
     case ISOTP_ERR_TIMEOUT:  return UDS_ERR_TIMEOUT;
     case ISOTP_ERR_TOO_LONG: return UDS_ERR_TOO_LONG;
+    case ISOTP_ERR_BUS:      return UDS_ERR_SEND;
     default:                 return UDS_ERR_TRANSPORT;
     }
 }

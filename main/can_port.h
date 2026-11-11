@@ -50,6 +50,8 @@ typedef struct {
     /* Where in the frame the error was seen, indexed by the controller's
      * segment code (0..31); the status endpoint names the nonzero ones. */
     uint32_t err_segments[32];
+    uint32_t tx_timeouts;      /* hal_send() waits that ran out while the driver
+                                  still held the frame; counted in tx_failed too */
     uint32_t tx_retries;       /* frames sent again after the first attempt
                                   failed (lost arbitration or a bus error);
                                   tx_failed counts the ones that never went */

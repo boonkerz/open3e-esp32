@@ -303,12 +303,13 @@ static esp_err_t h_status(httpd_req_t *r)
      * breakdown that follows is what it was made of. */
     snprintf(t, sizeof(t),
              "\"can\": {\"state\": \"%s\", \"txFailed\": %u, \"txRetries\": %u, "
+             "\"txTimeouts\": %u, "
              "\"rxMissed\": %u, \"busErrors\": %u, \"arbLost\": %u, "
              "\"bitErrors\": %u, \"stuffErrors\": %u, \"formErrors\": %u, "
              "\"crcErrors\": %u, \"ackErrors\": %u, \"otherErrors\": %u, "
              "\"rxErrors\": %u, \"txErrors\": %u, ",
              can.state ? can.state : "stopped", (unsigned)can.tx_failed,
-             (unsigned)can.tx_retries, (unsigned)can.rx_missed,
+             (unsigned)can.tx_retries, (unsigned)can.tx_timeouts, (unsigned)can.rx_missed,
              (unsigned)can.bus_errors, (unsigned)can.arb_lost,
              (unsigned)can.bit_errors, (unsigned)can.stuff_errors,
              (unsigned)can.form_errors, (unsigned)can.crc_errors,

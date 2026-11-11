@@ -111,13 +111,40 @@ static volatile bool      s_tx_ok;
  * `.ss = retry_cnt != -1`). Forever is wrong for a gateway that may be alone
  * on a bus: an unacknowledged frame would be repeated until the controller
  * is error-passive and the transmit path blocked. So the retry lives here:
- * send once, and if the controller reports the frame did not make it --
- * lost arbitration, or a bus error during the frame -- hand it over again. A
- * frame hit by one of the bus errors a noisy installation produces otherwise
- * simply vanishes, which the caller sees a second later as "no response"
- * although the ECU never saw the request (ioBroker.e3oncan #262). Every
- * socketcan adapter retransmits in that situation. */
-#define TX_ATTEMPTS 4
+ * send once, and if the controller reports the frame did not make it, hand
+ * it over again. A frame hit by one of the bus errors a noisy installation
+ * produces otherwise simply vanishes, which the caller sees a second later
+ * as "no response" although the ECU never saw the request (ioBroker.e3oncan
+ * #262). Every socketcan adapter retransmits in that situation.
+ *
+ * Two different things make a frame not go out, and they are budgeted
+ * differently. A real bus error on one of our frames is counted: TX_ATTEMPTS
+ * of those and the frame is given up. Lost arbitration is not an error at
+ * all -- another node started in the same bit and had the lower ID -- and
+ * on a busy internal bus a burst of such frames can last longer than four
+ * immediate retries; counting those as attempts gave up on about one frame
+ * in 1500 on a Vitodens' internal bus (MyHomeMyData's reading of the
+ * counters in #262: tx_failed == rawRead.errors). So arbitration losses are
+ * retried for as long as TX_BUDGET_MS allows, which is a hardware
+ * controller's behaviour. */
+#define TX_ATTEMPTS   4
+#define TX_BUDGET_MS  500
+
+/* The frame the driver is working on. twai_node_transmit() stores the
+ * pointer, not a copy (esp_twai_onchip.c: `p_curr_tx[0] = frame`, and the
+ * queue behind it keeps `.data = frame`), and nothing cancels a frame once
+ * handed over. On the stack of hal_send() it died with the call when the
+ * wait below timed out, while the controller still pointed at it; the frame
+ * then went out later with whatever the stack held by then. One exchange
+ * at a time (bus_lock), so one static frame is enough; s_tx_pending says the
+ * driver may still own it. */
+static twai_frame_t  s_frame;
+static uint8_t       s_payload[8];
+static bool          s_tx_pending;
+/* Set by on_error() for an arbitration loss without any other error; read
+ * after twai_node_transmit_wait_all_done(), which returns only after the
+ * ISR delivered both callbacks for the attempt. */
+static volatile bool s_tx_arb;
 
 /* ------------------------------------------------------------------ */
 /* ISO-TP HAL backed by TWAI                                            */
@@ -125,41 +152,67 @@ static volatile bool      s_tx_ok;
 static bool hal_send(void *ctx, uint32_t id, const uint8_t *data, uint8_t len)
 {
     (void)ctx;
-    /* The driver's transmit queue stores the frame by pointer, not by value
-     * (twai_frame_queue.c: `.data = data`), so this buffer has to stay valid
-     * until the frame has actually gone out. That is what the wait below is
-     * for -- it looks removable and is not. */
-    uint8_t payload[8];
-    memcpy(payload, data, len);
+    uint32_t deadline = (uint32_t)(esp_timer_get_time() / 1000) + TX_BUDGET_MS;
 
-    twai_frame_t frame = {
+    /* A frame from a timed-out call may still be in the driver. The buffers
+     * are not touched until it is out; if it never comes out this fails
+     * without sending, and the next call tries the same again. */
+    if (s_tx_pending) {
+        if (twai_node_transmit_wait_all_done(node, TX_BUDGET_MS) != ESP_OK) {
+            stats.tx_timeouts++;
+            stats.tx_failed++;
+            return false;
+        }
+        s_tx_pending = false;
+    }
+
+    memcpy(s_payload, data, len);
+    s_frame = (twai_frame_t){
         .header = { .id = id, .dlc = len },
-        .buffer = payload,
+        .buffer = s_payload,
         .buffer_len = len,
     };
     /* Recorded before the result is known: a frame that failed to go out is
      * still part of the story when reading a trace back. */
-    cantrace_put((uint16_t)id, payload, len, true);
+    cantrace_put((uint16_t)id, s_payload, len, true);
 
-    for (int attempt = 0; attempt < TX_ATTEMPTS; attempt++) {
+    int errors = 0;
+    for (int attempt = 0;; attempt++) {
         if (attempt) {
             stats.tx_retries++;
         }
         s_tx_ok = false;
-        if (twai_node_transmit(node, &frame, 50) != ESP_OK) {
+        s_tx_arb = false;
+        if (twai_node_transmit(node, &s_frame, 50) != ESP_OK) {
             stats.tx_failed++;
             return false;
         }
-        if (twai_node_transmit_wait_all_done(node, 100) != ESP_OK) {
+        int32_t left = (int32_t)(deadline - (uint32_t)(esp_timer_get_time() / 1000));
+        if (left < 100) {
+            left = 100;
+        }
+        if (twai_node_transmit_wait_all_done(node, left) != ESP_OK) {
+            s_tx_pending = true;
+            stats.tx_timeouts++;
             stats.tx_failed++;
             return false;
         }
         if (s_tx_ok) {
             return true;
         }
+        if (s_tx_arb) {
+            /* Not a failure of ours; try again while the budget lasts. */
+            if ((int32_t)(deadline - (uint32_t)(esp_timer_get_time() / 1000)) <= 0) {
+                stats.tx_failed++;
+                return false;
+            }
+            continue;
+        }
+        if (++errors >= TX_ATTEMPTS) {
+            stats.tx_failed++;
+            return false;
+        }
     }
-    stats.tx_failed++;
-    return false;
 }
 
 static bool IRAM_ATTR on_tx_done(twai_node_handle_t handle,
@@ -203,6 +256,7 @@ static bool IRAM_ATTR on_error(twai_node_handle_t handle,
          * error and must not be read as this one. An "other" error in the
          * same interrupt is lost here; that combination is rare enough. */
         stats.arb_lost++;
+        s_tx_arb = true;
         return false;
     }
     if (f.arb_lost) {

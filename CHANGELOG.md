@@ -27,6 +27,20 @@ bis dahin auf der Flash-Seite lag.
 
 ### Behoben
 
+- **Anfragen gingen am internen Bus verloren** (ioBroker.e3oncan #262,
+  Analyse von MyHomeMyData): etwa eine von 1500 am internen CAN einer
+  Vitodens kam als „transport error" zurück, gefolgt von einem „no response"
+  auf die nächste. Zwei Ursachen im Sendepfad. Verlorene Arbitrierung
+  zählte als Fehlversuch, und vier davon hintereinander sind in einem Burst
+  mit niedrigeren IDs schnell erreicht; sie wird jetzt bis zu 500 ms lang
+  einfach wiederholt, nur echte Busfehler zählen gegen die vier Versuche.
+  Und lief die Wartezeit auf das Senden ab, gab die Firmware auf, während
+  der Treiber das Frame noch per Zeiger auf dem inzwischen verlassenen Stack
+  hielt; es ging später mit beliebigem Inhalt raus. Das Frame liegt jetzt
+  fest, ein noch ausstehendes wird vor dem nächsten abgewartet.
+  `/api/status` zählt die Fälle unter `txTimeouts`; die Fehlermeldung
+  unterscheidet „transport error: send failed" von „transport error:
+  protocol".
 - **Netzladen plus Speichermodus brachte das Gerät zum Absturz.** Mit beiden
   Halts zugleich lief der Schreibpfad (Lesen, Codec, Mischen, Kodieren und
   die MQTT-Meldung) alle zwei Sekunden im Halte-Task, dessen 4 KiB Stack

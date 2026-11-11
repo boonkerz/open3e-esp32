@@ -46,7 +46,8 @@
 typedef enum {
     UDS_OK = 0,
     UDS_ERR_TIMEOUT,      /* silence: usually means no ECU at this address */
-    UDS_ERR_TRANSPORT,
+    UDS_ERR_TRANSPORT,    /* ISO-TP went wrong mid-message: sequence, PCI, overflow */
+    UDS_ERR_SEND,         /* a frame of ours never got onto the bus */
     UDS_ERR_NEGATIVE,     /* ECU answered 0x7F; see `nrc` */
     UDS_ERR_MALFORMED,
     UDS_ERR_TOO_LONG,
