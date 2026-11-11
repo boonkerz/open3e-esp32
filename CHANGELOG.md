@@ -9,6 +9,14 @@ Versionsnummer (`rawApiVersion`), siehe `docs/raw-gateway-api.md`.
 Vor 0.2.0 gab es keine Versionsnummern; 0.1.0 ist rückwirkend der Stand, der
 bis dahin auf der Flash-Seite lag.
 
+## Unveröffentlicht
+
+### Hinzugefügt
+
+- **Favicon** für die Weboberfläche (#11, wunderbaum): zwei gegenläufige
+  Leitungen mit Knoten in der Mitte, sein zweiter Vorschlag. Die Flash-Seite
+  trägt dasselbe Symbol. Kommt mit dem nächsten `storage.bin`.
+
 ## 0.3.0 — 2026-11-11
 
 Das Update besteht aus zwei Teilen: der Anwendung (OTA über *Anwendung
