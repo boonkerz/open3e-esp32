@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "cJSON.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -29,8 +30,13 @@ typedef struct {
     uint32_t     next_due_ms;
     pub_mode_t   mode;
     bool         ha;
+    bool         retain;       /* broker keeps the last value (#13) */
     char         topic[192];   /* fully expanded, computed once at load */
     o3e_node_t  *codec;
+    /* Last payload published for a retained point, so its leaf topics can be
+     * cleared exactly when it leaves the selection. PSRAM, like the codec. */
+    uint8_t     *last_raw;
+    uint16_t     last_len;
 } point_t;
 
 static point_t          *points;
@@ -44,6 +50,7 @@ static void free_points(void)
 {
     for (uint16_t i = 0; i < n_points; i++) {
         o3e_codec_free(points[i].codec);
+        free(points[i].last_raw);
     }
     free(points);
     points = NULL;
@@ -82,17 +89,9 @@ bool poller_reload(void)
     char *raw = app_config_read_file(CFG_POINTS_PATH);
     cJSON *root = raw ? cJSON_Parse(raw) : NULL;
     free(raw);
-    if (!cJSON_IsArray(root)) {
-        cJSON_Delete(root);
-        xSemaphoreTake(points_lock, portMAX_DELAY);
-        free_points();
-        stats.active_points = 0;
-        xSemaphoreGive(points_lock);
-        ESP_LOGI(TAG, "no datapoints selected");
-        return true;
-    }
-
-    int count = cJSON_GetArraySize(root);
+    /* A missing or unreadable file is an empty selection, handled below like
+     * any other so retained values of the previous selection get cleared. */
+    int count = cJSON_IsArray(root) ? cJSON_GetArraySize(root) : 0;
     if (count > POLL_MAX_POINTS) {
         count = POLL_MAX_POINTS;
         ESP_LOGW(TAG, "selection truncated to %d datapoints", POLL_MAX_POINTS);
@@ -126,6 +125,7 @@ bool poller_reload(void)
         const char *mode = sel_str(it, "mode");
         p->mode = (mode && strcmp(mode, "flat") == 0) ? PUB_MODE_FLAT : PUB_MODE_JSON;
         p->ha = sel_bool(it, "ha", false);
+        p->retain = sel_bool(it, "retain", false);
 
         /* Compiling here rather than per poll is the whole point of the
          * two-stage codec: the polling loop never parses JSON or reads flash. */
@@ -150,13 +150,44 @@ bool poller_reload(void)
     cJSON_Delete(root);
 
     xSemaphoreTake(points_lock, portMAX_DELAY);
+    /* A retained value outlives its publisher on the broker. For every old
+     * point that retained something, either hand its last payload to the
+     * same point in the new selection, or clear what it left behind: removed,
+     * disabled, retain switched off, or topic or mode changed, which all
+     * mean the old topics will never be written again (#13). */
+    for (uint16_t i = 0; i < n_points; i++) {
+        point_t *o = &points[i];
+        if (!o->retain) {
+            continue;
+        }
+        point_t *same = NULL;
+        for (uint16_t j = 0; j < n; j++) {
+            point_t *f = &fresh[j];
+            if (f->ecu == o->ecu && f->did == o->did && f->retain &&
+                f->mode == o->mode && strcmp(f->topic, o->topic) == 0) {
+                same = f;
+                break;
+            }
+        }
+        if (same) {
+            same->last_raw = o->last_raw;
+            same->last_len = o->last_len;
+            o->last_raw = NULL;
+        } else {
+            mqtt_pub_clear(o->topic, o->codec, o->last_raw, o->last_len, o->mode);
+        }
+    }
     free_points();
     points = fresh;
     n_points = n;
     stats.active_points = n;
     xSemaphoreGive(points_lock);
 
-    ESP_LOGI(TAG, "%u datapoints active", n);
+    if (n == 0) {
+        ESP_LOGI(TAG, "no datapoints selected");
+    } else {
+        ESP_LOGI(TAG, "%u datapoints active", n);
+    }
     /* The selection file also carries the energy-meter frames. */
     em380_reload();
     collect_reload();
@@ -175,6 +206,38 @@ bool poller_reload(void)
  * was missed. */
 static uint8_t *poll_buf;
 
+/* poll_task works on a copy of the point, so the payload is filed back into
+ * the live entry by address; the selection may have changed meanwhile, in
+ * which case there is nothing to remember. */
+static void remember_raw(uint16_t ecu, uint16_t did, const uint8_t *raw, size_t n)
+{
+    if (n == 0 || n > UINT16_MAX) {
+        return;
+    }
+    xSemaphoreTake(points_lock, portMAX_DELAY);
+    for (uint16_t i = 0; i < n_points; i++) {
+        point_t *p = &points[i];
+        if (p->ecu != ecu || p->did != did || !p->retain) {
+            continue;
+        }
+        if (!p->last_raw || p->last_len < n) {
+            uint8_t *grown = heap_caps_realloc(p->last_raw, n,
+                                               MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+            if (!grown) {
+                grown = realloc(p->last_raw, n);
+            }
+            if (!grown) {
+                break;
+            }
+            p->last_raw = grown;
+        }
+        memcpy(p->last_raw, raw, n);
+        p->last_len = (uint16_t)n;
+        break;
+    }
+    xSemaphoreGive(points_lock);
+}
+
 static void poll_one(point_t *p)
 {
     size_t n = 0;
@@ -189,8 +252,11 @@ static void poll_one(point_t *p)
         ESP_LOGD(TAG, "0x%03X.%u: %s", p->ecu, p->did, uds_strerror(r));
         return;
     }
-    if (mqtt_pub_value(p->topic, p->codec, poll_buf, n, p->mode)) {
+    if (mqtt_pub_value(p->topic, p->codec, poll_buf, n, p->mode, p->retain)) {
         stats.published++;
+        if (p->retain) {
+            remember_raw(p->ecu, p->did, poll_buf, n);
+        }
     }
 }
 

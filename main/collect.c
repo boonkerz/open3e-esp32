@@ -277,7 +277,7 @@ static void collect_task(void *arg)
                 break;
             }
             if (mqtt_pub_value(selected[i].topic, selected[i].codec,
-                               m.data, m.len, selected[i].mode)) {
+                               m.data, m.len, selected[i].mode, false)) {
                 stats.published++;
             }
             selected[i].last_pub_ms = now;

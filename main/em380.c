@@ -221,7 +221,7 @@ static void em380_task(void *arg)
                     (uint32_t)(now - slots[s].last_pub_ms) >= slots[s].min_interval_ms);
         if (due) {
             if (mqtt_pub_value(slots[s].topic, slots[s].codec, f.data, f.len,
-                               slots[s].mode)) {
+                               slots[s].mode, false)) {
                 slots[s].published++;
                 stats.published++;
             }

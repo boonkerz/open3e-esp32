@@ -418,6 +418,18 @@ open3e/FlowTemperatureSensor/Minimum  → 21.0
 
 `open3e/LWT` trägt retained `online` / `offline`.
 
+**Retained je Datenpunkt** (Spalte „Ret." in der Tabelle, Feld `retain` in
+`points.json`, Standard aus): der Broker behält den letzten Wert und liefert
+ihn jedem neuen Abonnenten sofort. Ohne das sieht ein Client nach einem
+Neustart einen Datenpunkt erst wieder, wenn er das nächste Mal gelesen wird,
+bei einem Tagesintervall also bis zu 24 Stunden lang gar nicht (#13). Im
+geflachten Modus gilt es für jedes Teil-Topic. Wird ein retained Punkt
+abgewählt, deaktiviert, das Häkchen entfernt oder Topic beziehungsweise Modus
+geändert, schickt das Gerät beim Speichern eine leere retained Nachricht auf
+die alten Topics, damit dort kein veralteter Wert stehen bleibt; dafür muss
+der Broker in dem Moment verbunden sein. open3e selbst setzt kein retained,
+deshalb ist es aus, solange niemand es einschaltet.
+
 ### Kommandos
 
 Auf `open3e/cmnd` (einstellbar) wird das Schema von open3es Listener akzeptiert:

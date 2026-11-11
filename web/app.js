@@ -661,6 +661,12 @@ function renderPoints() {
     const topic = el("input", { type: "text", value: cfg?.topic ?? "",
                                 placeholder: dp.name, disabled: !cfg });
     const ha = el("input", { type: "checkbox", checked: cfg?.ha ?? true, disabled: !cfg });
+    /* Off by default, as in open3e: a retained value survives the publisher,
+       and a broker full of stale values is harder to notice than a missing
+       one. For a point read once a day it is the difference between a value
+       after a client restart and a value tomorrow (#13). */
+    const retain = el("input", { type: "checkbox", checked: cfg?.retain ?? false, disabled: !cfg,
+                                 title: "Retained veröffentlichen" });
     const labels = el("input", {
       type: "text", value: formatLabels(cfg?.labels), disabled: !cfg,
       style: "width:186px", className: "mono small",
@@ -673,20 +679,21 @@ function renderPoints() {
     const valCell = el("td", { className: "mono small muted" });
 
     const sync = () => {
-      for (const c of [iv, mode, topic, ha, labels]) c.disabled = !on.checked;
+      for (const c of [iv, mode, topic, ha, retain, labels]) c.disabled = !on.checked;
       if (on.checked) {
         const lb = parseLabels(labels.value);
         selection.set(key, {
           ecu, did: dp.did, len: dp.len, enabled: true,
           interval: Number(iv.value) || 60,
           mode: mode.value, topic: topic.value, ha: ha.checked,
+          ...(retain.checked ? { retain: true } : {}),
           ...(lb ? { labels: lb } : {}),
         });
       } else {
         selection.delete(key);
       }
     };
-    for (const c of [on, iv, mode, topic, ha, labels]) c.onchange = sync;
+    for (const c of [on, iv, mode, topic, ha, retain, labels]) c.onchange = sync;
 
     const readBtn = el("button", { className: "btn sec small", textContent: "lesen",
                                    style: "padding:2px 8px" });
@@ -727,6 +734,7 @@ function renderPoints() {
       el("td", {}, mode),
       el("td", {}, topic),
       el("td", {}, ha),
+      el("td", {}, retain),
       el("td", {}, labels),
       valCell));
   }

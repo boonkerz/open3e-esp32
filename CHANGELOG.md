@@ -13,6 +13,14 @@ bis dahin auf der Flash-Seite lag.
 
 ### Hinzugefügt
 
+- **Retained je Datenpunkt** (#13, Spoon3er): Häkchen „Ret." in der
+  Datenpunkt-Tabelle, Feld `retain` in `points.json`, Standard aus. Der
+  Broker behält den letzten Wert, ein neu verbindender Client bekommt ihn
+  sofort statt erst nach dem nächsten Intervall. Gilt für JSON und
+  geflacht, dort je Teil-Topic. Beim Abwählen, Deaktivieren, Entfernen des
+  Häkchens oder Ändern von Topic oder Modus leert das Gerät die alten
+  Topics mit einer leeren retained Nachricht (wenn der Broker gerade
+  verbunden ist).
 - **Favicon** für die Weboberfläche (#11, wunderbaum): zwei gegenläufige
   Leitungen mit Knoten in der Mitte, sein zweiter Vorschlag. Die Flash-Seite
   trägt dasselbe Symbol. Kommt mit dem nächsten `storage.bin`.

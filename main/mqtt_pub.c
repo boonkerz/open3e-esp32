@@ -128,11 +128,18 @@ void mqtt_pub_topic(char *out, size_t out_sz, uint16_t ecu, uint16_t did,
 
 /* ------------------------------------------------------------------ */
 
-/* Bridges o3e_flatten's callback to the broker. */
+/* Bridges o3e_flatten's callback to the broker; `user` carries the retain
+ * flag, or NULL for a plain publish. */
 static void publish_leaf(void *user, const char *topic, const char *value)
 {
+    mqtt_pub_raw(topic, value, user != NULL);
+}
+
+static void clear_leaf(void *user, const char *topic, const char *value)
+{
     (void)user;
-    mqtt_pub_raw(topic, value, false);
+    (void)value;
+    mqtt_pub_raw(topic, "", true);
 }
 
 bool mqtt_pub_raw(const char *topic, const char *payload, bool retain)
@@ -150,10 +157,13 @@ bool mqtt_pub_raw(const char *topic, const char *payload, bool retain)
 }
 
 bool mqtt_pub_value(const char *topic, const o3e_node_t *node,
-                    const uint8_t *payload, size_t len, pub_mode_t mode)
+                    const uint8_t *payload, size_t len, pub_mode_t mode,
+                    bool retain)
 {
+    static int retain_flag;
     if (mode == PUB_MODE_FLAT) {
-        uint32_t n = o3e_flatten(node, payload, len, topic, publish_leaf, NULL);
+        uint32_t n = o3e_flatten(node, payload, len, topic, publish_leaf,
+                                 retain ? &retain_flag : NULL);
         return n > 0;
     }
 
@@ -161,9 +171,35 @@ bool mqtt_pub_value(const char *topic, const o3e_node_t *node,
     if (!json) {
         return false;
     }
-    bool ok = mqtt_pub_raw(topic, json, false);
+    bool ok = mqtt_pub_raw(topic, json, retain);
     free(json);
     return ok;
+}
+
+void mqtt_pub_clear(const char *topic, const o3e_node_t *node,
+                    const uint8_t *last, size_t last_len, pub_mode_t mode)
+{
+    if (!client || !stats.connected) {
+        return;
+    }
+    if (mode != PUB_MODE_FLAT) {
+        mqtt_pub_raw(topic, "", true);
+        return;
+    }
+    uint8_t *zero = NULL;
+    if (!last) {
+        if (!node || !node->len) {
+            return;
+        }
+        zero = calloc(node->len, 1);
+        if (!zero) {
+            return;
+        }
+        last = zero;
+        last_len = node->len;
+    }
+    o3e_flatten(node, last, last_len, topic, clear_leaf, NULL);
+    free(zero);
 }
 
 /* ------------------------------------------------------------------ */

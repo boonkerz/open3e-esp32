@@ -46,9 +46,20 @@ void mqtt_pub_topic(char *out, size_t out_sz, uint16_t ecu, uint16_t did,
                     const char *did_name, const char *device,
                     const char *suffix_override);
 
-/* Publish one decoded datapoint. */
+/* Publish one decoded datapoint. `retain` asks the broker to keep the last
+ * value for late subscribers (#13); open3e itself never retains, so the
+ * default everywhere is off. */
 bool mqtt_pub_value(const char *topic, const o3e_node_t *node,
-                    const uint8_t *payload, size_t len, pub_mode_t mode);
+                    const uint8_t *payload, size_t len, pub_mode_t mode,
+                    bool retain);
+
+/* Remove what a retained datapoint left on the broker: an empty retained
+ * message on its topic, or in flat mode on every leaf topic. The leaves are
+ * found by flattening `last` (the payload last published); without one a
+ * zero payload of the codec's width stands in, which names the same leaves
+ * for every fixed-layout datapoint. */
+void mqtt_pub_clear(const char *topic, const o3e_node_t *node,
+                    const uint8_t *last, size_t last_len, pub_mode_t mode);
 
 bool mqtt_pub_raw(const char *topic, const char *payload, bool retain);
 
