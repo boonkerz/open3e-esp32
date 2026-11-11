@@ -204,8 +204,13 @@ static bool ensure_task(char *err, size_t err_sz)
             return false;
         }
     }
+    /* The same call chain as the poll task -- UDS, ISO-TP, codec compile,
+     * merge and encode -- plus hold_publish() on top, so the same stack as
+     * the poll and command tasks. With 4096 the two holds together overflowed
+     * it: crash report "task hold, stack corrupted", device gone until a
+     * power cycle. */
     if (!task_h &&
-        xTaskCreate(hold_task, "hold", 4096, NULL, 4, &task_h) != pdPASS) {
+        xTaskCreate(hold_task, "hold", 6144, NULL, 4, &task_h) != pdPASS) {
         snprintf(err, err_sz, "cannot start the hold task");
         return false;
     }
@@ -376,32 +381,46 @@ void storage_hold_status(storage_hold_status_t *out)
 
 void hold_publish(void)
 {
-    mqtt_cfg_t mq;
-    mqtt_cfg_get(&mq);
-    if (!mq.enabled || !mqtt_pub_connected()) {
+    /* Called from the hold task, the HTTP task and the command task; the two
+     * config copies and the payload are over a kilobyte, which no caller's
+     * stack needs to carry. One shared buffer under its own lock instead. */
+    static struct {
+        mqtt_cfg_t mq;
+        sys_cfg_t  sys;
+        char       topic[CFG_TOPIC_MAX + 8];
+        char       payload[288];
+    } b;
+    static SemaphoreHandle_t b_lock;
+    if (!b_lock) {
+        b_lock = xSemaphoreCreateMutex();
+        if (!b_lock) {
+            return;
+        }
+    }
+    xSemaphoreTake(b_lock, portMAX_DELAY);
+    mqtt_cfg_get(&b.mq);
+    if (!b.mq.enabled || !mqtt_pub_connected()) {
+        xSemaphoreGive(b_lock);
         return;
     }
-    sys_cfg_t sys;
-    sys_cfg_get(&sys);
+    sys_cfg_get(&b.sys);
 
     grid_hold_status_t g;
     storage_hold_status_t s;
     grid_hold_status(&g);
     storage_hold_status(&s);
 
-    char topic[CFG_TOPIC_MAX + 8];
-    snprintf(topic, sizeof(topic), "%s/hold", mq.base_topic);
-
-    char payload[288];
-    snprintf(payload, sizeof(payload),
+    snprintf(b.topic, sizeof(b.topic), "%s/hold", b.mq.base_topic);
+    snprintf(b.payload, sizeof(b.payload),
              "{\"active\": %s, \"power\": %u, \"minutes\": %u, "
              "\"remainingS\": %u, \"writes\": %u, \"failures\": %u, "
              "\"storage\": \"%s\", \"storageRemainingS\": %u, "
              "\"storageWrites\": %u, \"storageFailures\": %u}",
              g.active ? "true" : "false",
-             (unsigned)sys.grid_watts, (unsigned)sys.grid_minutes,
+             (unsigned)b.sys.grid_watts, (unsigned)b.sys.grid_minutes,
              (unsigned)g.remaining_s, (unsigned)g.writes, (unsigned)g.failures,
              storage_mode_name(s.mode), (unsigned)s.remaining_s,
              (unsigned)s.writes, (unsigned)s.failures);
-    mqtt_pub_raw(topic, payload, true);
+    mqtt_pub_raw(b.topic, b.payload, true);
+    xSemaphoreGive(b_lock);
 }

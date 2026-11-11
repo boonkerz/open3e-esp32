@@ -25,6 +25,16 @@ bis dahin auf der Flash-Seite lag.
   Leitungen mit Knoten in der Mitte, sein zweiter Vorschlag. Die Flash-Seite
   trägt dasselbe Symbol. Kommt mit dem nächsten `storage.bin`.
 
+### Behoben
+
+- **Netzladen plus Speichermodus brachte das Gerät zum Absturz.** Mit beiden
+  Halts zugleich lief der Schreibpfad (Lesen, Codec, Mischen, Kodieren und
+  die MQTT-Meldung) alle zwei Sekunden im Halte-Task, dessen 4 KiB Stack
+  dafür nicht reichten: Absturzbericht „Task hold, Stack beschädigt", das
+  Gerät blieb bis zum Stromlos-Machen weg. Der Task hat jetzt denselben
+  Stack wie Poller und Kommando-Task, die Meldung hält ihre Puffer nicht
+  mehr auf dem Stack.
+
 ## 0.3.0 — 2026-11-11
 
 Das Update besteht aus zwei Teilen: der Anwendung (OTA über *Anwendung
