@@ -68,8 +68,13 @@ Polen:
 
 - Phoenix Contact [MSTB 2,5/3-ST-5,08](https://www.phoenixcontact.com/de-de/produkte/leiterplattenstecker-mstb-25-3-st-508-1757022)
   (passt, mit Firmenadresse gibt es dort auch Muster)
+- die [Leiterplattenanschlussklemme 3-polig, RM 5,08 mm, von Pollin](https://www.pollin.de/p/leiterplattenanschlussklemme-3pol-rm5-08-mm-10a-452654)
+  (passt laut einem Bericht aus dem Home-Assistant-Forum, Diskussion #9)
 - vermutlich ebenso der [von Reichelt](https://www.reichelt.de/de/de/shop/produkt/steckbare_schraubklemme_-_3-pol_rm_5_mm_0_-292638),
   ungetestet
+
+Vermutlich passt jeder dreipolige Leiterplattensteckverbinder im Raster
+5,08 mm; die Liste nennt nur die, von denen es Rückmeldungen gibt.
 
 | Original | Phoenix Contact |
 |---|---|
