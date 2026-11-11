@@ -180,7 +180,7 @@ Die Karte „CAN-Bus" zeigt vier Zähler, die Verschiedenes bedeuten:
 | Fehlerzähler TX / RX | TEC und REC des Controllers | springen bei einem Fehler hoch (TX um 8, RX um 1), gehen mit jedem fehlerfreien Frame um 1 zurück; ein kurzer Ausschlag ist normal und meist schon weg, bevor die Seite ihn abholt |
 | Frames verpasst | Antworten auf die laufende Anfrage, die der Empfangs-Interrupt nicht mehr in die Warteschlange bekam | die einzigen Frames, die diese Firmware wirklich verworfen hat; sollte 0 sein. Broadcast-Frames der Anlage, die niemand angefordert hat, zählen nicht mit |
 | Bus-Off-Recovery | wie oft der Controller nach `bus-off` neu gestartet wurde | 0 auf einem gesunden Bus |
-| Bit-Timing | Zeitquanten je Bit, Abtastzeitpunkt und SJW, mit denen der Controller gerade läuft | Standard bei 250 kBit/s: 20 Quanten, 85 %, SJW 3; einstellbar unter *Einstellungen → System → CAN-Bit-Timing* |
+| Bit-Timing | Zeitquanten je Bit, Abtastzeitpunkt und SJW, mit denen der Controller gerade läuft | Standard bei 250 kBit/s: 20 Quanten, 85 %, SJW 3; einstellbar unter *Einstellungen → Gerät → CAN-Bit-Timing* |
 
 Die Aufschlüsselung liest die Firmware direkt aus dem Fehlerregister des
 Controllers, weil der ESP-IDF-Treiber davon nur vier Flags weiterreicht und
@@ -199,7 +199,7 @@ Frame-Ende (ACK-Slot, ACK-Delimiter, CRC-Delimiter) und auf eigenen
 Sendungen, die mit SJW 3 vollständig verschwanden und beim Zurückstellen
 sofort wiederkamen (vier Stunden Messreihe, ioBroker.e3oncan #262). Die
 Firmware setzt den SJW deshalb auf die volle Länge des zweiten
-Phasenabschnitts, bei 250 kBit/s drei Quanten. Unter *Einstellungen → System
+Phasenabschnitts, bei 250 kBit/s drei Quanten. Unter *Einstellungen → Gerät
 → CAN-Bit-Timing* lassen sich Abtastzeitpunkt (50 bis 90 %) und SJW (1 bis 4
 Quanten) ändern; leer heißt dieser Standard. Die Änderung gilt beim Speichern
 sofort, der Controller startet dafür kurz neu, und `/api/status` zeigt unter
@@ -820,7 +820,8 @@ acht Byte auf den CAN-IDs `0x250`–`0x25D`, und das ist das gesamte Protokoll.
 open3e sieht ihn deshalb gar nicht. Die Unterstützung ist aus
 [E3onCAN](https://github.com/MyHomeMyData/E3onCAN) portiert.
 
-- **Standardmäßig aus.** Unter *Einstellungen → System* einschalten. Ohne
+- **Standardmäßig aus.** Unter *Einstellungen → Bus → Passiver Empfang*
+  einschalten. Ohne
   Zähler bringt es nichts und liefe nur im Empfangs-Interrupt mit.
 - **Rein passiv.** Es wird nichts auf den Bus geschrieben, nur ein
   Empfangsfilter gesetzt.

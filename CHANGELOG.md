@@ -82,7 +82,7 @@ also *Sicherung* ziehen und danach zurückspielen.
   Frame im Dauerlauf. Die Diagnose erkennt das an tausendfach gleichen
   Frames hintereinander und sagt es, statt die Leitung zu verdächtigen.
   `/api/candiag` liefert je Bitrate `errors` und `repeats`.
-- **CAN-Bit-Timing einstellbar** unter *Einstellungen → System*:
+- **CAN-Bit-Timing einstellbar** unter *Einstellungen → Gerät*:
   Abtastzeitpunkt (50 bis 90 %) und SJW (1 bis 4 Quanten), leer heißt
   Standard (250 kBit/s: 20 Quanten, 85 %, SJW 3). Gilt sofort, der
   Controller startet kurz neu. Die Karte „CAN-Bus" zeigt das angewendete
