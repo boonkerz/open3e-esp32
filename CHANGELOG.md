@@ -9,7 +9,14 @@ Versionsnummer (`rawApiVersion`), siehe `docs/raw-gateway-api.md`.
 Vor 0.2.0 gab es keine Versionsnummern; 0.1.0 ist rückwirkend der Stand, der
 bis dahin auf der Flash-Seite lag.
 
-## Unveröffentlicht
+## 0.3.0 — 2026-11-11
+
+Das Update besteht aus zwei Teilen: der Anwendung (OTA über *Anwendung
+aktualisieren*) und dem Abbild der Storage-Partition (`storage.bin`, Karte
+*Datenpunktdatenbank*), weil die Datenpunktdatenbank und die Weboberfläche
+dort liegen. Wer nur die Anwendung einspielt, behält die alte Datenbank und
+die alten Seitentexte. Das Abbild löscht Auswahl und Scan-Ergebnis, vorher
+also *Sicherung* ziehen und danach zurückspielen.
 
 ### Hinzugefügt
 
@@ -27,7 +34,9 @@ bis dahin auf der Flash-Seite lag.
   Handshakes. Die Schlüssel sind Teil der Sicherung, und „Alles außer WLAN"
   löscht die WireGuard-Konfiguration mit. Solange WireGuard aus ist, läuft
   kein Tunnel-Task; der Speicher dafür wird erst beim Einschalten belegt.
-  Die Standardroute ist per Vorgabe aus.
+  Die Standardroute ist per Vorgabe aus. Den Tunnel selbst hat bisher nur
+  der Autor des Beitrags (PR #17, NerdyProjects) an seinem Server geprüft;
+  auf dem Referenzgerät lief 0.3.0 mit ausgeschaltetem WireGuard.
 - **Schaltausgänge** (#5, TheSmartGerman): GPIO1 und GPIO2 lassen sich je
   Pin als Ausgang betreiben, etwa für ein Relais an den SG-Ready-Klemmen.
   Zustand auf `<Basis>/output/<name>`, Befehl `ON`/`OFF` auf `…/set`, in
