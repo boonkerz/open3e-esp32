@@ -454,6 +454,12 @@ und passender `device_class` direkt aus dem open3e-Codec. Beim Abschalten werden
 die Discovery-Topics wieder geleert, damit keine verwaisten Entitäten
 zurückbleiben.
 
+Schreibbare Zahlen werden als `number` angemeldet, Aufzählungen als `select`.
+Die Spalte **Beschriftungen** macht aus einer nackten Zahl eine Auswahlliste
+(`0=zu, 1=offen`), die Spalte **Grenzen** (`10..60`) begrenzt den Bereich einer
+Zahl; beides gilt auch beim Schreiben, siehe [Schreiben auf den
+Bus](#schreiben-auf-den-bus).
+
 ---
 
 ## WireGuard
@@ -724,6 +730,20 @@ Zwei Sperren, weil am anderen Ende eine echte Heizung hängt:
    werden. Standard ist deaktiviert.
 2. **Pro Datenpunkt.** Geschrieben wird nur, was die open3e-Datenbank als `rw`
    führt.
+3. **Grenzen je Datenpunkt** (Spalte „Grenzen" in der Tabelle, Feld `range`
+   in `points.json`), optional. Die Datenbank kennt für eine Zahl nur die
+   Breite des Feldes, deshalb bietet Home Assistant einen Warmwasser-Sollwert
+   von -3276,8 bis 3276,7 °C an (#21). Mit `10..60` in der Spalte meldet die
+   Discovery genau diesen Bereich als `min`/`max`, und jeder Schreibbefehl
+   außerhalb wird abgelehnt, egal ob er aus Home Assistant, vom Befehlskanal,
+   von der API oder aus der Weboberfläche kommt; auch das Erzwingen hebt die
+   Grenze nicht auf. Eine Seite darf fehlen (`..60`), ein vorangestellter
+   Feldname (`Comfort: 10..60`) beschränkt die Grenze auf dieses Feld, sonst
+   gilt sie für jede Zahl des Datenpunkts. Geprüft wird, was der Befehl
+   setzt; Felder, die die Firmware aus dem aktuellen Wert ergänzt, zählen
+   nicht. Die Anlage prüft ihrerseits und lehnt Unsinn mit
+   `requestOutOfRange` ab, aber eine Grenze, die man selbst gezogen hat,
+   greift früher und sichtbarer.
 
 Vor jedem Schreiben liest die Firmware den Datenpunkt zuerst — das bestätigt,
 dass er auf dieser ECU existiert, und die Antwortlänge entscheidet, welche

@@ -41,7 +41,20 @@ typedef struct {
 
 static point_t          *points;
 static uint16_t          n_points;
-static SemaphoreHandle_t points_lock;
+
+/* Write limits from the selection (#21), kept apart from the points: a limit
+ * applies to every write to its datapoint, whether or not the point is being
+ * polled right now, and the point list holds only what is. Same shape as the
+ * labels, {"*": {"min": 10, "max": 60}} or keyed by field. */
+typedef struct {
+    uint16_t ecu;
+    uint16_t did;
+    cJSON   *range;
+} limit_t;
+
+static limit_t          *limits;
+static uint16_t          n_limits;
+static SemaphoreHandle_t points_lock;   /* guards points and limits */
 static poll_stats_t      stats;
 static volatile bool     running;
 static volatile bool     paused;
@@ -55,6 +68,14 @@ static void free_points(void)
     free(points);
     points = NULL;
     n_points = 0;
+}
+
+static void free_limits(limit_t *l, uint16_t n)
+{
+    for (uint16_t i = 0; i < n; i++) {
+        cJSON_Delete(l[i].range);
+    }
+    free(l);
 }
 
 /* Resolve {device} the way open3e's dev_of_addr() does: the user's key for
@@ -98,12 +119,16 @@ bool poller_reload(void)
     }
 
     point_t *fresh = calloc((size_t)count ? (size_t)count : 1, sizeof(point_t));
-    if (!fresh) {
+    limit_t *fresh_limits = calloc((size_t)count ? (size_t)count : 1, sizeof(limit_t));
+    if (!fresh || !fresh_limits) {
+        free(fresh);
+        free(fresh_limits);
         cJSON_Delete(root);
         return false;
     }
 
     uint16_t n = 0;
+    uint16_t nl = 0;
     uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
     const cJSON *it;
     cJSON_ArrayForEach(it, root) {
@@ -113,7 +138,19 @@ bool poller_reload(void)
         /* The same file also holds the passively received energy-meter frames,
          * which carry a CAN-ID instead of an ECU and DID. Reading those fields
          * from such an entry used to dereference NULL and panic on boot. */
-        if (!sel_is_datapoint(it) || !sel_enabled(it)) {
+        if (!sel_is_datapoint(it)) {
+            continue;
+        }
+        const cJSON *rng = cJSON_GetObjectItemCaseSensitive(it, "range");
+        if (cJSON_IsObject(rng) && nl < count) {
+            fresh_limits[nl].ecu = sel_u16(it, "ecu", 0);
+            fresh_limits[nl].did = sel_u16(it, "did", 0);
+            fresh_limits[nl].range = cJSON_Duplicate(rng, true);
+            if (fresh_limits[nl].range) {
+                nl++;
+            }
+        }
+        if (!sel_enabled(it)) {
             continue;
         }
         point_t *p = &fresh[n];
@@ -181,6 +218,9 @@ bool poller_reload(void)
     points = fresh;
     n_points = n;
     stats.active_points = n;
+    free_limits(limits, n_limits);
+    limits = fresh_limits;
+    n_limits = nl;
     xSemaphoreGive(points_lock);
 
     if (n == 0) {
@@ -419,6 +459,74 @@ static bool merge_current(const o3e_node_t *node, const uint8_t *raw, size_t n,
     return true;
 }
 
+/* The limit for one field: its own entry, else the one for "*". */
+static const cJSON *limit_for(const cJSON *range, const char *field)
+{
+    const cJSON *by_field = field ? cJSON_GetObjectItemCaseSensitive(range, field) : NULL;
+    if (cJSON_IsObject(by_field)) {
+        return by_field;
+    }
+    const cJSON *any = cJSON_GetObjectItemCaseSensitive(range, "*");
+    return cJSON_IsObject(any) ? any : NULL;
+}
+
+/* Every number the caller sent against the limits for its field. Checked on
+ * the caller's value, before the current reading fills in the rest: the limit
+ * is for the field being changed, and an unrelated field the plant itself
+ * holds outside it must not block the write. */
+static bool within_limits(const cJSON *range, const cJSON *value, const char *field,
+                          char *err, size_t err_sz)
+{
+    if (cJSON_IsObject(value)) {
+        const cJSON *it;
+        cJSON_ArrayForEach(it, value) {
+            if (!within_limits(range, it, it->string, err, err_sz)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (!cJSON_IsNumber(value)) {
+        return true;
+    }
+    const cJSON *lim = limit_for(range, field);
+    if (!lim) {
+        return true;
+    }
+    const cJSON *lo = cJSON_GetObjectItemCaseSensitive(lim, "min");
+    const cJSON *hi = cJSON_GetObjectItemCaseSensitive(lim, "max");
+    bool below = cJSON_IsNumber(lo) && value->valuedouble < lo->valuedouble;
+    bool above = cJSON_IsNumber(hi) && value->valuedouble > hi->valuedouble;
+    if (!below && !above) {
+        return true;
+    }
+    char lo_s[24] = "", hi_s[24] = "";
+    if (cJSON_IsNumber(lo)) {
+        snprintf(lo_s, sizeof(lo_s), "%g", lo->valuedouble);
+    }
+    if (cJSON_IsNumber(hi)) {
+        snprintf(hi_s, sizeof(hi_s), "%g", hi->valuedouble);
+    }
+    snprintf(err, err_sz, "%s%s%g is outside the limit %s..%s set for this datapoint",
+             field ? field : "", field ? " = " : "", value->valuedouble, lo_s, hi_s);
+    return false;
+}
+
+static bool limits_allow(uint16_t ecu, uint16_t did, const cJSON *value,
+                         char *err, size_t err_sz)
+{
+    bool ok = true;
+    xSemaphoreTake(points_lock, portMAX_DELAY);
+    for (uint16_t i = 0; i < n_limits; i++) {
+        if (limits[i].ecu == ecu && limits[i].did == did) {
+            ok = within_limits(limits[i].range, value, NULL, err, err_sz);
+            break;
+        }
+    }
+    xSemaphoreGive(points_lock);
+    return ok;
+}
+
 bool poller_write_now(uint16_t ecu, uint16_t did, const char *value_json,
                       bool force, char *err, size_t err_sz)
 {
@@ -472,6 +580,16 @@ bool poller_write_now(uint16_t ecu, uint16_t did, const char *value_json,
     cJSON *value = cJSON_Parse(value_json);
     if (!value) {
         snprintf(err, err_sz, "value is not valid JSON");
+        o3e_codec_free(node);
+        free(buf);
+        return false;
+    }
+
+    /* The selection's own limits (#21), the third gate after the global
+     * switch and the access flag. Not subject to `force`: the operator set
+     * them for exactly the writes that bypass everything else. */
+    if (!limits_allow(ecu, did, value, err, err_sz)) {
+        cJSON_Delete(value);
         o3e_codec_free(node);
         free(buf);
         return false;

@@ -255,6 +255,40 @@ int main(int argc, char **argv)
         ok("temperature leaf is announced", 0, NULL);
     }
 
+    /* --- an operator's range narrows the number, in HA's own min/max --- */
+    reset("[{\"ecu\":1664,\"did\":533,\"len\":2,\"enabled\":true,\"interval\":60,"
+          "\"mode\":\"flat\",\"topic\":\"\",\"ha\":true,"
+          "\"range\":{\"*\":{\"min\":1,\"max\":4}}}]", "open3e-vent/cmnd", "flat");
+    ha_disco_publish_all();
+    m = find("homeassistant/number/open3e_112233/680_533_Acutual_set/config");
+    ok("a ranged number is still a number", m != NULL, NULL);
+    if (m) {
+        cJSON *j = cJSON_Parse(m->payload);
+        const cJSON *mn = j ? cJSON_GetObjectItem(j, "min") : NULL;
+        const cJSON *mx = j ? cJSON_GetObjectItem(j, "max") : NULL;
+        ok("min and max come from the selection's range (#21)",
+           cJSON_IsNumber(mn) && mn->valuedouble == 1
+             && cJSON_IsNumber(mx) && mx->valuedouble == 4, m->payload);
+        cJSON_Delete(j);
+    }
+    /* A range for some other field leaves this one at its full width, and a
+     * bound beyond the field's width is not widened to. */
+    reset("[{\"ecu\":1664,\"did\":533,\"len\":2,\"enabled\":true,\"interval\":60,"
+          "\"mode\":\"flat\",\"topic\":\"\",\"ha\":true,"
+          "\"range\":{\"Other\":{\"max\":4},\"Acutual\":{\"max\":999}}}]",
+          "open3e-vent/cmnd", "flat");
+    ha_disco_publish_all();
+    m = find("homeassistant/number/open3e_112233/680_533_Acutual_set/config");
+    if (m) {
+        cJSON *j = cJSON_Parse(m->payload);
+        const cJSON *mx = j ? cJSON_GetObjectItem(j, "max") : NULL;
+        ok("a range cannot widen a field beyond its width",
+           cJSON_IsNumber(mx) && mx->valuedouble == 255, m->payload);
+        cJSON_Delete(j);
+    } else {
+        ok("ranged control announced", 0, NULL);
+    }
+
     /* --- labels turn a bare number into a named choice, both ways --- */
     reset("[{\"ecu\":1664,\"did\":437,\"len\":2,\"enabled\":true,\"interval\":60,"
           "\"mode\":\"flat\",\"topic\":\"\",\"ha\":true,"

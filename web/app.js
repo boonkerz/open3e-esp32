@@ -609,6 +609,33 @@ function parseLabels(text) {
   return Object.keys(map).length ? { [field]: map } : undefined;
 }
 
+/* "10..60", "..60", "10.." or "Comfort: 10..60" -> {"*": {min, max}} or by field.
+   Two dots rather than a dash, so a negative bound stays readable. */
+function parseRange(text) {
+  const t = text.trim();
+  if (!t) return undefined;
+  let field = "*", body = t;
+  const colon = t.indexOf(":");
+  if (colon > 0) {
+    field = t.slice(0, colon).trim();
+    body = t.slice(colon + 1);
+  }
+  const m = body.trim().match(/^(-?\d+(?:[.,]\d+)?)?\s*\.\.\s*(-?\d+(?:[.,]\d+)?)?$/);
+  if (!m || (m[1] === undefined && m[2] === undefined) || field === "") return undefined;
+  const r = {};
+  if (m[1] !== undefined) r.min = Number(m[1].replace(",", "."));
+  if (m[2] !== undefined) r.max = Number(m[2].replace(",", "."));
+  if (r.min !== undefined && r.max !== undefined && r.min > r.max) return undefined;
+  return { [field]: r };
+}
+function formatRange(range) {
+  if (!range) return "";
+  const field = Object.keys(range)[0];
+  if (!field) return "";
+  const r = range[field] || {};
+  const body = `${r.min ?? ""}..${r.max ?? ""}`;
+  return field === "*" ? body : `${field}: ${body}`;
+}
 function formatLabels(labels) {
   if (!labels) return "";
   const field = Object.keys(labels)[0];
@@ -685,24 +712,40 @@ function renderPoints() {
            + "die Zahl selbst genügt. Mit vorangestelltem Feldnamen "
            + "(\"BypassStatus: 0=zu, 1=offen\") nur für dieses Feld.",
     });
+    /* The database bounds a number only by its byte width, which puts a
+       temperature setpoint in Home Assistant on a slider to 3276.7 (#21). */
+    const range = el("input", {
+      type: "text", value: formatRange(cfg?.range), disabled: !cfg,
+      style: "width:92px", className: "mono small",
+      placeholder: "10..60",
+      title: "Schreibgrenzen als Von..Bis in der Einheit des Datenpunkts. Home "
+           + "Assistant bietet nur diesen Bereich an, und jeder Schreibbefehl "
+           + "außerhalb (auch per MQTT oder API) wird abgelehnt. Eine Seite darf "
+           + "fehlen (\"..60\"). Mit vorangestelltem Feldnamen "
+           + "(\"Comfort: 10..60\") nur für dieses Feld.",
+    });
     const valCell = el("td", { className: "mono small muted" });
 
     const sync = () => {
-      for (const c of [iv, mode, topic, ha, retain, labels]) c.disabled = !on.checked;
+      for (const c of [iv, mode, topic, ha, retain, labels, range]) c.disabled = !on.checked;
       if (on.checked) {
         const lb = parseLabels(labels.value);
+        const rg = parseRange(range.value);
+        /* Visible rejection, so a typo does not silently mean "no limit". */
+        range.style.borderColor = (range.value.trim() && !rg) ? "var(--err)" : "";
         selection.set(key, {
           ecu, did: dp.did, len: dp.len, enabled: true,
           interval: Number(iv.value) || 60,
           mode: mode.value, topic: topic.value, ha: ha.checked,
           ...(retain.checked ? { retain: true } : {}),
           ...(lb ? { labels: lb } : {}),
+          ...(rg ? { range: rg } : {}),
         });
       } else {
         selection.delete(key);
       }
     };
-    for (const c of [on, iv, mode, topic, ha, retain, labels]) c.onchange = sync;
+    for (const c of [on, iv, mode, topic, ha, retain, labels, range]) c.onchange = sync;
 
     const readBtn = el("button", { className: "btn sec small", textContent: "lesen",
                                    style: "padding:2px 8px" });
@@ -745,6 +788,7 @@ function renderPoints() {
       el("td", {}, ha),
       el("td", {}, retain),
       el("td", {}, labels),
+      el("td", {}, range),
       valCell));
   }
 

@@ -87,6 +87,21 @@ static const cJSON *labels_for(const cJSON *labels, const char *field)
     return cJSON_IsObject(any) ? any : NULL;
 }
 
+/* Limits of the operator's own for a writable number, in the same shape:
+ *
+ *     "range": {"*": {"min": 10, "max": 60}}
+ *
+ * The database bounds a number only by its byte width, so a temperature
+ * setpoint arrives in Home Assistant as a slider from -3276.8 to 3276.7 (#21).
+ * The device itself rejects nonsense with requestOutOfRange, but a control
+ * that ends where the plant's limits end is the better interface -- and the
+ * same entry is what poller_write_now() enforces on every write, not only the
+ * ones Home Assistant sends. Either bound may be left out. */
+static const cJSON *range_for(const cJSON *range, const char *field)
+{
+    return labels_for(range, field);   /* same lookup: the field, else "*" */
+}
+
 /* {% set m = {'0': 'zu', '1': 'offen'} %} -- the head both directions share. */
 static void add_label_map(o3e_buf_t *b, const cJSON *labels, bool text_to_value)
 {
@@ -274,7 +289,8 @@ static void publish_control(const mqtt_cfg_t *cfg, const char *dev_id,
                             const char *name, const o3e_node_t *leaf,
                             const char *value_template,
                             uint16_t ecu, uint16_t did, const char *path,
-                            bool writable, const cJSON *labels, bool clear)
+                            bool writable, const cJSON *labels,
+                            const cJSON *range, bool clear)
 {
     if (!writable || !cfg->cmnd_topic[0]) {
         return;
@@ -431,10 +447,22 @@ static void publish_control(const mqtt_cfg_t *cfg, const char *dev_id,
             lo = 0.0;
         }
         double scale = leaf->scale > 0.0 ? leaf->scale : 1.0;
+        lo /= scale;
+        hi /= scale;
+        /* The operator's limits narrow that range; they never widen it, since
+         * the field could not carry the value anyway. */
+        const cJSON *rmin = range ? cJSON_GetObjectItemCaseSensitive(range, "min") : NULL;
+        const cJSON *rmax = range ? cJSON_GetObjectItemCaseSensitive(range, "max") : NULL;
+        if (cJSON_IsNumber(rmin) && rmin->valuedouble > lo) {
+            lo = rmin->valuedouble;
+        }
+        if (cJSON_IsNumber(rmax) && rmax->valuedouble < hi) {
+            hi = rmax->valuedouble;
+        }
         char nums[128];
         snprintf(nums, sizeof(nums),
-                 ", \"min\": %.4g, \"max\": %.4g, \"step\": %.4g, \"mode\": \"box\"",
-                 lo / scale, hi / scale, 1.0 / scale);
+                 ", \"min\": %.6g, \"max\": %.6g, \"step\": %.4g, \"mode\": \"box\"",
+                 lo, hi, 1.0 / scale);
         o3e_buf_adds(&b, nums);
         if (leaf->unit && leaf->unit[0]) {
             o3e_buf_adds(&b, ", \"unit_of_measurement\": ");
@@ -464,7 +492,8 @@ static void publish_leaf(const mqtt_cfg_t *cfg, const char *dev_id,
                          const char *state_topic, const o3e_node_t *n,
                          const char *did_name, uint16_t did, uint16_t ecu,
                          const char *path, const char *tmpl,
-                         bool flat, bool writable, const cJSON *labels, bool clear)
+                         bool flat, bool writable, const cJSON *labels,
+                         const cJSON *range, bool clear)
 {
         char object_id[192];
         snprintf(object_id, sizeof(object_id), "%03x_%u%s", ecu, did, path);
@@ -486,6 +515,8 @@ static void publish_leaf(const mqtt_cfg_t *cfg, const char *dev_id,
            and raw bytes or text have nothing to map. */
         const cJSON *lbl = (n->kind == O3E_K_INT || n->kind == O3E_K_BYTEVAL)
                          ? labels_for(labels, path[0] ? path + 1 : NULL) : NULL;
+        const cJSON *rng = (n->kind == O3E_K_INT || n->kind == O3E_K_BYTEVAL)
+                         ? range_for(range, path[0] ? path + 1 : NULL) : NULL;
 
         if (flat) {
             /* Flat mode gives each leaf its own topic; path segments are
@@ -503,7 +534,7 @@ static void publish_leaf(const mqtt_cfg_t *cfg, const char *dev_id,
             char *lt = lbl ? label_state_template(lbl, NULL) : NULL;
             publish_entity(cfg, dev_id, leaf_topic, object_id, name, n, lt, clear);
             publish_control(cfg, dev_id, leaf_topic, object_id, name, n, lt,
-                            ecu, did, path, writable, lbl, clear);
+                            ecu, did, path, writable, lbl, rng, clear);
             free(lt);
         } else {
             char t[256];
@@ -513,7 +544,7 @@ static void publish_leaf(const mqtt_cfg_t *cfg, const char *dev_id,
             const char *vt = lt ? lt : ((tmpl[0] || is_enum) ? t : "{{ value }}");
             publish_entity(cfg, dev_id, state_topic, object_id, name, n, vt, clear);
             publish_control(cfg, dev_id, state_topic, object_id, name, n, vt,
-                            ecu, did, path, writable, lbl, clear);
+                            ecu, did, path, writable, lbl, rng, clear);
             free(lt);
         }
 }
@@ -527,7 +558,7 @@ static void walk_leaves(const mqtt_cfg_t *cfg, const char *dev_id,
                         const char *did_name, uint16_t did, uint16_t ecu,
                         char *path, size_t path_sz, char *tmpl, size_t tmpl_sz,
                         bool flat, bool writable, const cJSON *labels,
-                        bool clear, int depth)
+                        const cJSON *range, bool clear, int depth)
 {
     if (depth > 4) {
         return;   /* deeply nested lists are not useful as entities */
@@ -547,7 +578,7 @@ static void walk_leaves(const mqtt_cfg_t *cfg, const char *dev_id,
             snprintf(tmpl + tlen, tmpl_sz - tlen, ".%s", k->id ? k->id : "");
             walk_leaves(cfg, dev_id, state_topic, k, did_name, did, ecu,
                         path, path_sz, tmpl, tmpl_sz, flat, writable, labels,
-                        clear, depth + 1);
+                        range, clear, depth + 1);
             path[plen] = '\0';
             tmpl[tlen] = '\0';
         }
@@ -565,7 +596,7 @@ static void walk_leaves(const mqtt_cfg_t *cfg, const char *dev_id,
          * Keeping them in their own frame is what stops this from overflowing
          * the MQTT control task's stack. */
         publish_leaf(cfg, dev_id, state_topic, n, did_name, did, ecu,
-                     path, tmpl, flat, writable, labels, clear);
+                     path, tmpl, flat, writable, labels, range, clear);
         return;
     }
 }
@@ -635,7 +666,8 @@ static void ha_disco_walk_selection(bool clear)
         walk_leaves(&cfg, dev_id, state_topic, node,
                     node->id ? node->id : "datapoint", did, ecu,
                     path, sizeof(path), tmpl, sizeof(tmpl), flat, writable,
-                    cJSON_GetObjectItemCaseSensitive(it, "labels"), clear, 0);
+                    cJSON_GetObjectItemCaseSensitive(it, "labels"),
+                    cJSON_GetObjectItemCaseSensitive(it, "range"), clear, 0);
         o3e_codec_free(node);
         count++;
     }

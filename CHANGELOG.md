@@ -13,6 +13,13 @@ bis dahin auf der Flash-Seite lag.
 
 ### Hinzugefügt
 
+- **Schreibgrenzen je Datenpunkt.** Neue Spalte „Grenzen" in der
+  Datenpunkttabelle (`10..60`, `..60`, `Comfort: 10..60`; Feld `range` in
+  `points.json`). Home Assistant bekommt den Bereich als `min`/`max` seiner
+  Number-Entität statt der Feldbreite (bisher -3276,8 bis 3276,7 für einen
+  Temperatur-Sollwert), und jeder Schreibbefehl außerhalb wird abgelehnt,
+  auch per MQTT, API und Weboberfläche (#21).
+
 - **Speicher laden mit fester Leistung.** Der Netzsollwert (DID 2188) ist
   der Bezug am Netzanschluss, nicht die Ladeleistung: das Haus wird zuerst
   versorgt, nur der Rest lädt. Bei -2000 W und 1550 W Hausverbrauch kamen
