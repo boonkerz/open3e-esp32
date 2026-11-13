@@ -2568,6 +2568,13 @@ static esp_err_t h_fallback(httpd_req_t *r)
     if (strncmp(r->uri, "/api/", 5) == 0) {
         return send_err(r, 404, "no such endpoint");
     }
+    /* A path with a file extension is an asset, not an app route: a missing
+     * /plant.svg answered with the app's HTML shows up in Home Assistant as a
+     * broken picture-elements background, not as the 404 it is. */
+    const char *dot = strrchr(r->uri, '.');
+    if (dot && !strchr(dot, '/')) {
+        return send_err(r, 404, "no such file");
+    }
     return serve_file(r, "/index.html") == ESP_OK
          ? ESP_OK
          : send_err(r, 404, "web interface not installed on the storage partition");
