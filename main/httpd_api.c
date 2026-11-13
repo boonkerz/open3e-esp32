@@ -985,6 +985,7 @@ static esp_err_t h_plant_svg_put(httpd_req_t *r)
     if (!ok) {
         return send_err(r, 500, "could not save the picture");
     }
+    ha_disco_plant_image(false);
     return send_json(r, "{\"ok\": true}");
 }
 

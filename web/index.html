@@ -262,16 +262,21 @@
   </div>
   <div class="card" id="card-plant-ha">
     <h2>Home Assistant</h2>
-    <p class="hint">Dasselbe Bild als <b>Picture-Elements-Karte</b>: das Gateway
-      liefert das leere Schema unter <span class="mono">/plant.svg</span>, die
-      Werte kommen aus den per Discovery angelegten Sensoren. Dafür müssen die
+    <p class="hint">Dasselbe Bild als <b>Picture-Elements-Karte</b>: die Werte
+      kommen aus den per Discovery angelegten Sensoren, das leere Schema
+      veröffentlicht das Gateway per MQTT als <b>Image-Entität</b>, damit Home
+      Assistant es selbst ausliefert, auch von unterwegs. Dafür müssen die
       Datenpunkte des Bildes in der Auswahl stehen, mit HA-Häkchen; der erste
-      Knopf ergänzt, was fehlt. Der zweite erzeugt die Karte und die YAML zum
-      Einfügen in ein Dashboard (Bearbeiten → Karte hinzufügen → Manuell).</p>
+      Knopf ergänzt, was fehlt. Der zweite erzeugt Bild und YAML zum Einfügen
+      in ein Dashboard (Bearbeiten → Karte hinzufügen → Manuell). Zeigt Home
+      Assistant die Image-Entität nicht an: SVG herunterladen, nach
+      <span class="mono">config/www/plant.svg</span> legen und in der YAML
+      <span class="mono">image: /local/plant.svg</span> verwenden.</p>
     <div class="row">
       <button class="btn sec" id="plant-ha-points" style="flex:0 0 auto">Datenpunkte des Schemas aufnehmen</button>
       <button class="btn" id="plant-ha-card" style="flex:0 0 auto">Karte erzeugen</button>
       <button class="btn sec" id="plant-ha-copy" style="flex:0 0 auto" hidden>YAML kopieren</button>
+      <button class="btn sec" id="plant-ha-download" style="flex:0 0 auto">SVG herunterladen</button>
       <span id="plant-ha-msg" class="small muted" style="align-self:center"></span>
     </div>
     <textarea id="plant-ha-yaml" class="mono small" rows="16" readonly hidden

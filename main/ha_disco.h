@@ -21,4 +21,10 @@ void ha_disco_clear_all(void);
  * datapoint, so the two are worth reporting apart. */
 void ha_disco_counts(int *sensors, int *controls);
 
+/* The plant schematic as an image entity: the SVG the web interface stored
+ * goes out retained on <base>/plant/svg, and discovery announces it, so a
+ * picture-elements card can use image_entity and Home Assistant serves the
+ * picture itself -- reachable from outside, where the gateway is not. */
+void ha_disco_plant_image(bool clear);
+
 #endif /* O3E_HA_DISCO_H */

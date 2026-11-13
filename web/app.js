@@ -1798,6 +1798,14 @@ function initApp() {
   $("plant-ha-card").onclick = (e) => plantHaCard(e.currentTarget);
   $("plant-ha-copy").onclick = () => navigator.clipboard.writeText($("plant-ha-yaml").value)
     .then(() => toast("YAML kopiert.", "ok"), () => $("plant-ha-yaml").select());
+  $("plant-ha-download").onclick = () => {
+    if (!plantProfile || !plantProfile.outdoor) return;
+    const blob = new Blob([plantBackgroundSvg(plantProfile)], { type: "image/svg+xml" });
+    const a = el("a", { href: URL.createObjectURL(blob), download: "plant.svg" });
+    document.body.append(a);
+    a.click();
+    a.remove();
+  };
 
   /* Unterteilung der Einstellungen. Der zuletzt geöffnete Bereich wird
      gemerkt: wer an MQTT arbeitet, landet nach jedem Neuladen sonst wieder
@@ -2981,7 +2989,21 @@ async function plantHaCard(btn) {
     /* Positions come from the drawn picture itself, so card and picture never
        drift apart; percentages because the card scales with the dashboard. */
     const svg = buildPlantSvg(p);
-    const lines = ["type: picture-elements", `image: http://${location.host}/plant.svg`, "elements:"];
+    const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+    const base = ($("mq-base") && $("mq-base").value) || "open3e";
+    /* The picture itself: as an image entity when MQTT is on, since Home
+       Assistant then serves it from anywhere; the gateway's own URL only works
+       on the LAN and not from an https dashboard. */
+    const mqttOn = $("mq-enabled") && $("mq-enabled").checked;
+    const lines = ["type: picture-elements"];
+    if (mqttOn) {
+      lines.push(`image_entity: image.${slug(base)}_anlagenschema`,
+                 `# Alternativ ohne MQTT-Bild: image: /local/plant.svg (Datei aus „SVG herunterladen“ nach config/www)`);
+    } else {
+      lines.push(`image: /local/plant.svg`,
+                 `# Datei aus „SVG herunterladen“ nach config/www kopieren; nur im LAN geht auch http://${location.host}/plant.svg`);
+    }
+    lines.push("elements:");
     for (const s of plantActiveSlots()) {
       const t = svg.querySelector(`#pv-${s.id}`);
       if (!t) continue;
@@ -3003,7 +3025,7 @@ async function plantHaCard(btn) {
     ta.value = lines.join("\n");
     ta.hidden = false;
     $("plant-ha-copy").hidden = false;
-    $("plant-ha-msg").textContent = `Bild unter http://${location.host}/plant.svg abgelegt, ${plantActiveSlots().length} Werte in der Karte.`;
+    $("plant-ha-msg").textContent = `Bild gespeichert${mqttOn ? " und per MQTT veröffentlicht" : ""}, ${plantActiveSlots().length} Werte in der Karte.`;
   } catch (e) {
     $("plant-ha-msg").textContent = e.message;
   } finally {

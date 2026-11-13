@@ -675,6 +675,7 @@ static void ha_disco_walk_selection(bool clear)
 
     /* Not datapoints, so the walk never reaches them -- announced separately. */
     ha_disco_grid(&cfg, dev_id, clear);
+    ha_disco_plant_image(clear);
     ha_disco_contacts(&cfg, dev_id, clear);
 
     /* Counted separately: "published for 19 datapoints" says nothing about
@@ -828,6 +829,52 @@ void ha_disco_counts(int *sensors, int *controls)
     if (controls) {
         *controls = n_controls;
     }
+}
+
+void ha_disco_plant_image(bool clear)
+{
+    mqtt_cfg_t cfg;
+    mqtt_cfg_get(&cfg);
+    if (!cfg.enabled || !mqtt_pub_connected()) {
+        return;
+    }
+    char dev_id[32];
+    device_id(dev_id, sizeof(dev_id));
+    char topic[CFG_TOPIC_MAX + 16];
+    snprintf(topic, sizeof(topic), "%s/plant/svg", cfg.base_topic);
+    char conf[352];
+    snprintf(conf, sizeof(conf), "%s/image/%s/plant/config", cfg.ha_prefix, dev_id);
+
+    char *svg = clear ? NULL : app_config_read_file(CFG_WWW_DIR "/plant.svg");
+    /* Only a real picture goes out; a missing file, or the wrong file handed
+     * back by a test stub, must not become a retained payload. */
+    bool have = svg && strncmp(svg, "<svg", 4) == 0;
+    if (!have) {
+        free(svg);
+        mqtt_pub_raw(topic, "", true);
+        mqtt_pub_raw(conf, "", true);
+        return;
+    }
+    mqtt_pub_raw(topic, svg, true);
+    free(svg);
+    if (!cfg.ha_discovery) {
+        return;
+    }
+    o3e_buf_t b;
+    o3e_buf_init(&b);
+    o3e_buf_adds(&b, "{\"name\": \"Anlagenschema\", \"image_topic\": ");
+    o3e_buf_add_json_str(&b, topic);
+    o3e_buf_adds(&b, ", \"content_type\": \"image/svg+xml\", \"unique_id\": ");
+    char uid[48];
+    snprintf(uid, sizeof(uid), "%s_plant", dev_id);
+    o3e_buf_add_json_str(&b, uid);
+    o3e_buf_adds(&b, ", \"device\": {\"identifiers\": [");
+    o3e_buf_add_json_str(&b, dev_id);
+    o3e_buf_adds(&b, "]}}");
+    if (!b.oom && b.buf) {
+        mqtt_pub_raw(conf, b.buf, true);
+    }
+    o3e_buf_free(&b);
 }
 
 void ha_disco_publish_all(void) { ha_disco_walk_selection(false); }

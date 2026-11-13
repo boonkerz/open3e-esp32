@@ -27,8 +27,10 @@ bis dahin auf der Flash-Seite lag.
   bringt Umschaltventil und Zirkulationspumpe ins Bild. Die Leitungen zeigen
   die Fließrichtung, solange Verdichter beziehungsweise Pumpe laufen.
   Für Home Assistant erzeugt der Reiter dasselbe Bild als
-  Picture-Elements-Karte: Hintergrund `/plant.svg` vom Gerät, Werte aus den
-  per Discovery angelegten Sensoren, YAML zum Einfügen.
+  Picture-Elements-Karte: das leere Schema geht per MQTT als Image-Entität
+  an Home Assistant (so ist es auch von unterwegs sichtbar), die Werte
+  kommen aus den per Discovery angelegten Sensoren, YAML zum Einfügen;
+  alternativ als Datei zum Herunterladen für `config/www`.
 
 - **Schreibgrenzen je Datenpunkt.** Neue Spalte „Grenzen" in der
   Datenpunkttabelle (`10..60`, `..60`, `Comfort: 10..60`; Feld `range` in

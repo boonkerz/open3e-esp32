@@ -447,14 +447,21 @@ immer, weil das Bild von den Werten nichts weiß.
 
 **Home Assistant.** Dasselbe Bild gibt es als Picture-Elements-Karte: der
 Knopf *Datenpunkte des Schemas aufnehmen* ergänzt die Auswahl um die
-Datenpunkte des Bildes (15 s, JSON, HA-Häkchen), *Karte erzeugen* legt das
-leere Schema als `/plant.svg` auf dem Gerät ab und erzeugt die YAML einer
-`picture-elements`-Karte, in der jeder Wert ein `state-label` der per
-Discovery angelegten Sensoren ist, an derselben Stelle wie im Reiter. Die
-Entitäts-IDs folgen der Regel von Home Assistant
-(`sensor.<Basis-Topic>_<Name>`); weicht eine ab, etwa nach einem
-Namenskonflikt, wird sie in der YAML angepasst. Ein neues `storage.bin`
-löscht `/plant.svg`, der Knopf legt es wieder an.
+Datenpunkte des Bildes (15 s, JSON, HA-Häkchen), *Karte erzeugen* speichert
+das leere Schema auf dem Gerät, veröffentlicht es retained auf
+`<Basis>/plant/svg` und meldet es per Discovery als Image-Entität
+`image.<Basis-Topic>_anlagenschema` an; die YAML der `picture-elements`-Karte
+nutzt `image_entity`, so liefert Home Assistant das Bild selbst aus, auch von
+unterwegs und auf einer HTTPS-Seite, wo die Adresse des Gateways nicht
+erreichbar wäre. Jeder Wert ist ein `state-label` der per Discovery
+angelegten Sensoren, an derselben Stelle wie im Reiter. Die Entitäts-IDs
+folgen der Regel von Home Assistant (`sensor.<Basis-Topic>_<Name>`); weicht
+eine ab, etwa nach einem Namenskonflikt, wird sie in der YAML angepasst.
+Ohne MQTT, oder falls Home Assistant das SVG in der Image-Entität nicht
+anzeigt: *SVG herunterladen*, die Datei nach `config/www/plant.svg` legen
+und `image: /local/plant.svg` verwenden. Im LAN tut es auch
+`http://<Gateway>/plant.svg`; ein neues `storage.bin` löscht die Datei,
+*Karte erzeugen* legt sie wieder an.
 
 **Entschlüsselt: DID 1238** `AvailableActorSensorComponents` ist eine Zählung
 und dann je Aktor die Nummer seines Datenpunkts als 16 Bit (Little Endian):
