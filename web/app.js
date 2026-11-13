@@ -2712,7 +2712,7 @@ function buildPlantSvg(p) {
   g("fan2", svFan(110, 300), V("fan2", 110, 332));
   g("evap", svHx(170, 140, 50, 140), svSensor(195, 300, false), V("evap", 230, 304, "start"), L(195, 130, "Verdampfer"));
   g("eev", svValve(330, 100), V("eev", 330, 82), L(330, 124, "Expansionsventil"));
-  g("fourway", svFourWay(620, 315), V("fourway", 642, 319, "start"), L(642, 302, "Vierwegeventil", "start"));
+  g("fourway", svFourWay(620, 315), V("fourway", 642, 312, "start"), L(642, 326, "Vierwegeventil", "start"));
   g("comp", svCompressor(450, 350), L(450, 316, "Verdichter"), V("comp", 450, 394));
   g("comprps", V("comprps", 450, 410));
   g("oil", L(500, 304, "Öl", "start"), V("oil", 500, 318, "start"));
@@ -2726,8 +2726,8 @@ function buildPlantSvg(p) {
   g("water",
     svSensor(900, 160, false), V("ret", 900, 140), L(900, 190, "Rücklauf"),
     svSensor(900, 260, false), V("flow", 900, 290), L(900, 304, "Vorlauf"));
-  g("divert", svValve(700, 260), V("divert", 700, 290), L(700, 304, "Umschaltventil"));
-  g("circ", svPump(690, 215), V("circ", 690, 240), L(690, 196, "Zirkulation"));
+  g("divert", svValve(680, 260), V("divert", 680, 290), L(680, 304, "Umschaltventil"));
+  g("circ", svPump(960, 210), V("circ", 938, 214, "end"), L(938, 228, "Zirkulation", "end"));
   g("press", svSensor(760, 260, true), V("press", 760, 290), L(760, 304, "Druck"));
   g("massflow", svSensor(830, 260, true), V("massflow", 830, 290), L(830, 304, "Durchfluss"));
   g("dhw", svTank(720, 185, 34, 56), V("dhw", 737, 180), L(737, 255, "Warmwasser"));
