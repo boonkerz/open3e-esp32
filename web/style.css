@@ -114,6 +114,22 @@ main { padding: 20px; max-width: 1200px; margin: 0 auto; }
 section { display: none; }
 section.active { display: block; }
 
+/* The plant schematic. Dark in both themes, like the service view it is
+   modelled on: the pipe colours (refrigerant high pressure orange, low
+   pressure blue, heating water red/blue) need a dark ground to read. */
+.plant svg { display: block; width: 100%; height: auto; background: #0b1020; border-radius: var(--radius); }
+.plant text { font: 13px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; fill: #e6edf3; }
+.plant text.val { font-weight: 600; font-variant-numeric: tabular-nums; }
+.plant text.lbl { font-size: 11px; fill: #9198a1; }
+.plant .sym { fill: none; stroke: #e6edf3; stroke-width: 2; }
+.plant .pipe { fill: none; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+.plant .hi { stroke: #f97316; }
+.plant .lo { stroke: #38bdf8; }
+.plant .flow { stroke: #ef4444; }
+.plant .ret { stroke: #60a5fa; }
+.plant .off { display: none; }
+.plant .stale { opacity: .45; }
+
 .card {
   background: var(--panel);
   border: 1px solid var(--line);

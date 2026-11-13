@@ -37,6 +37,11 @@
 #define CFG_WWW_DIR      CFG_MOUNT "/www"
 #define CFG_POINTS_PATH  CFG_MOUNT "/points.json"
 #define CFG_SYSTEM_PATH  CFG_MOUNT "/system.json"
+/* What the web interface found out about the plant behind the bus: the raw
+ * answers of its probe (sensor status, configuration datapoints). The rules
+ * that turn them into a picture live in the browser, so the device only
+ * keeps the evidence. */
+#define CFG_PLANT_PATH   CFG_MOUNT "/plant.json"
 
 typedef struct {
     char ssid[CFG_SSID_MAX];

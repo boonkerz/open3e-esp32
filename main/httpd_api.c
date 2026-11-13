@@ -932,6 +932,39 @@ static esp_err_t h_points_get(httpd_req_t *r)
     return e;
 }
 
+/* The plant probe: an opaque JSON object the web interface stores after it
+ * has read the datapoints that tell one installation from another. Kept on
+ * the device rather than in the browser so every browser, and the backup,
+ * sees the same plant; the device itself never interprets it. */
+static esp_err_t h_plant_get(httpd_req_t *r)
+{
+    char *json = app_config_read_file(CFG_PLANT_PATH);
+    esp_err_t e = send_json(r, json ? json : "{}");
+    free(json);
+    return e;
+}
+
+static esp_err_t h_plant_put(httpd_req_t *r)
+{
+    char *body = read_body(r);
+    if (!body) {
+        return ESP_OK;
+    }
+    cJSON *j = cJSON_Parse(body);
+    if (!cJSON_IsObject(j)) {
+        cJSON_Delete(j);
+        free(body);
+        return send_err(r, 400, "expected a JSON object");
+    }
+    cJSON_Delete(j);
+    bool ok = app_config_write_file(CFG_PLANT_PATH, body, strlen(body));
+    free(body);
+    if (!ok) {
+        return send_err(r, 500, "could not save the plant profile");
+    }
+    return send_json(r, "{\"ok\": true}");
+}
+
 static esp_err_t h_points_put(httpd_req_t *r)
 {
     char *body = read_body(r);
@@ -1624,6 +1657,11 @@ static esp_err_t h_export(httpd_req_t *r)
         if (!stream_file_inline(r, CFG_SYSTEM_PATH, "null")) {
             return ESP_FAIL;
         }
+        /* The probe belongs to the scan: both describe this plant. */
+        send_chunk_str(r, ", \"plant\": ");
+        if (!stream_file_inline(r, CFG_PLANT_PATH, "null")) {
+            return ESP_FAIL;
+        }
     }
     send_chunk_str(r, "}");
     return httpd_resp_send_chunk(r, NULL, 0);
@@ -1824,6 +1862,11 @@ static bool import_apply(const cJSON *root, char *err, size_t err_sz)
     const cJSON *jsc = cJSON_GetObjectItem(root, "scan");
     if (cJSON_IsObject(jsc) && !write_section(jsc, CFG_SYSTEM_PATH)) {
         snprintf(err, err_sz, "could not write the scan result");
+        return false;
+    }
+    const cJSON *jpl = cJSON_GetObjectItem(root, "plant");
+    if (cJSON_IsObject(jpl) && !write_section(jpl, CFG_PLANT_PATH)) {
+        snprintf(err, err_sz, "could not write the plant profile");
         return false;
     }
     return true;
@@ -2534,6 +2577,8 @@ static const httpd_uri_t routes[] = {
     { "/api/broadcast",   HTTP_GET,  h_collect,      NULL },
     { "/api/points",      HTTP_GET,  h_points_get,   NULL },
     { "/api/points",      HTTP_PUT,  h_points_put,   NULL },
+    { "/api/plant",       HTTP_GET,  h_plant_get,    NULL },
+    { "/api/plant",       HTTP_PUT,  h_plant_put,    NULL },
     { "/api/read",        HTTP_GET,  h_read,         NULL },
     { "/api/write",       HTTP_POST, h_write,        NULL },
     { "/api/grid",        HTTP_POST, h_grid,         NULL },

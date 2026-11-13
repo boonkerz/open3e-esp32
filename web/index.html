@@ -49,6 +49,7 @@
   <nav>
     <button data-tab="status" class="active">Status</button>
     <button data-tab="system">System</button>
+    <button data-tab="plant">Anlage</button>
     <button data-tab="points">Datenpunkte</button>
     <button data-tab="meter">Passive Daten</button>
     <button data-tab="trace">CAN-Trace</button>
@@ -234,6 +235,30 @@
       <b>CAN-Trace</b>: die ID-Übersicht dort zeigt <i>passiv</i>, welche
       Kennungen auf dem Bus tatsächlich sprechen — ganz ohne zu fragen, und
       unabhängig davon, ob ein Gerät auf Anfragen antwortet.</p>
+  </div>
+</section>
+
+<section id="tab-plant">
+  <div class="card">
+    <h2>Anlagenprofil</h2>
+    <p class="hint">Was hinter dem Bus steht, liest das Gerät aus dem Scan und
+      einer einmaligen <b>Sondierung</b>: Sensorstatus und Konfigurations-Datenpunkte
+      sagen, welche Teile verbaut sind (Warmwasserspeicher, Puffer, Heizkreise,
+      Heizstab, Lüfter, Ventile). Den Modellnamen gibt der Bus nicht her, nur die
+      Seriennummer und die Nennleistung.</p>
+    <div class="row">
+      <button class="btn" id="plant-probe" style="flex:0 0 auto">Anlage erkennen</button>
+      <span id="plant-msg" class="small muted" style="align-self:center"></span>
+    </div>
+    <div id="plant-profile" class="grid" style="margin-top:14px"></div>
+  </div>
+  <div class="card">
+    <h2>Kältekreis und Hydraulik</h2>
+    <p class="hint">Teile, die die Sondierung nicht findet, fehlen im Bild. Die
+      Werte werden nacheinander gelesen, ein Datenpunkt je Sekunde, nur solange
+      dieser Reiter offen ist.</p>
+    <div id="plant-svg" class="plant"></div>
+    <p id="plant-note" class="small muted" style="margin:10px 0 0"></p>
   </div>
 </section>
 
