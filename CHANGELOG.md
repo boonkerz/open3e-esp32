@@ -23,6 +23,8 @@ bis dahin auf der Flash-Seite lag.
   Heizkreise. Teile, die die Anlage nicht hat, fehlen im Bild. Den Modellnamen
   gibt der Bus nicht her (nur Seriennummer und Nennleistung). Die Sondierung
   liegt als `/data/plant.json` auf dem Gerät und wandert mit der Sicherung.
+  DID 1238 ist entschlüsselt (Liste der Aktoren als Datenpunktnummern) und
+  bringt Umschaltventil und Zirkulationspumpe ins Bild.
   Für Home Assistant erzeugt der Reiter dasselbe Bild als
   Picture-Elements-Karte: Hintergrund `/plant.svg` vom Gerät, Werte aus den
   per Discovery angelegten Sensoren, YAML zum Einfügen.

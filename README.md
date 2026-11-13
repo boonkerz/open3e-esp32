@@ -451,11 +451,18 @@ Entitäts-IDs folgen der Regel von Home Assistant
 Namenskonflikt, wird sie in der YAML angepasst. Ein neues `storage.bin`
 löscht `/plant.svg`, der Knopf legt es wieder an.
 
-**Noch offen.** DID 952 `HydraulicMatrix` und 1549
-`HydraulicMatrixConfiguration` sind der eigentliche Hydraulikplan der Anlage,
-aber bisher nicht entschlüsselt; 1238 `AvailableActorSensorComponents` sieht
-nach einer Liste von 16-Bit-Kennungen aus (darin 0x06EF = 1775, Lüfter 1).
-Das Profil zeigt alle drei roh. Wer eine anders konfigurierte Anlage hat
+**Entschlüsselt: DID 1238** `AvailableActorSensorComponents` ist eine Zählung
+und dann je Aktor die Nummer seines Datenpunkts als 16 Bit (Little Endian):
+auf einer 252-A `07 7d01 3207 ee06 ef06 8401 8601 eb01` = 381 Heizkreispumpe,
+1842 Umschaltventil, 1774 Kurbelwannenheizung, 1775 Lüfter 1, 388 und 390
+Expansionsventile, 491 Zirkulationspumpe. Das Profil listet sie, und
+Umschaltventil und Zirkulationspumpe kommen daraus ins Bild.
+
+**Noch offen.** DID 952 `HydraulicMatrix` (51 Byte, drei Zeilen zu 17) und
+1549 `HydraulicMatrixConfiguration` (97 Byte) sind der eigentliche
+Hydraulikplan, aber mit einer einzigen Anlage nicht zu knacken: auf der 252-A
+stehen in 952 die Paare `01 08` und `01 05` plus `01 01`, in 1549 `01 22`,
+`01 11 20` und `01 03 03`, der Rest ist null. Das Profil zeigt beide roh. Wer eine anders konfigurierte Anlage hat
 (Puffer, mehrere Heizkreise, Kühlung, Monoblock): eine Sicherung mit Scan und
 Sondierung als Issue hilft, die Matrix über mehrere Anlagen zu vergleichen und
 die Modelltabelle (Herstellnummer → Modell) zu füllen.

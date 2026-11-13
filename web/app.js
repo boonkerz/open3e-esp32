@@ -2479,6 +2479,22 @@ function derivePlant() {
   }
   const heaterPower = plantVal("indoor", 2574);
   const fan2 = plantVal("outdoor", 1776);
+  /* DID 1238 AvailableActorSensorComponents: a count, then that many
+     little-endian 16-bit datapoint numbers, one per actuator the controller
+     drives: pump, diverter valve, fans, expansion valves, circulation pump,
+     crankcase heater. Decoded from a 252-A where every entry matched a
+     datapoint the scan had found. */
+  const actors = [];
+  const raw1238 = plantVal("indoor", 1238);
+  if (typeof raw1238 === "string" && raw1238.length >= 2) {
+    const n = parseInt(raw1238.slice(0, 2), 16);
+    for (let i = 0; i < n && 6 + 4 * i <= raw1238.length; i++) {
+      const lo = parseInt(raw1238.slice(2 + 4 * i, 4 + 4 * i), 16);
+      const hi = parseInt(raw1238.slice(4 + 4 * i, 6 + 4 * i), 16);
+      const did = lo + 256 * hi;
+      if (did) actors.push(did);
+    }
+  }
   const dhwLayers = [3234, 3233, 3232].filter((d) => fitted("indoor", d));
   return {
     roles, probed,
@@ -2507,7 +2523,9 @@ function derivePlant() {
     flowSensor: fitted("indoor", 376),
     pressure: fitted("indoor", 318),
     pump: has("indoor", 381),
-    diverter: has("indoor", 386),
+    actors,
+    circulation: actors.includes(491),
+    diverter: actors.includes(1842) ? 1842 : (has("indoor", 386) ? 386 : 0),
     refrigerant: plantVal("outdoor", 2568),
     matrix: {
       952: plantVal("indoor", 952), 1549: plantVal("indoor", 1549),
@@ -2654,6 +2672,8 @@ function plantSlots(p) {
   add("massflow", "indoor", 376, { f: "Actual", unit: "l/h", d: 0, part: "massflow" });
   add("dhw", "indoor", p.dhwDid, { f: "Actual", unit: "°C", part: "dhw" });
   add("heater", "indoor", 2487, { unit: "W", d: 0, part: "heater" });
+  add("circ", "indoor", 491, { f: "State", unit: "", part: "circ", map: { 0: "aus", 1: "ein" } });
+  if (p.diverter) add("divert", "indoor", p.diverter, { f: p.diverter === 1842 ? "CurrentPosition" : undefined, unit: "%", part: "divert" });
   if (p.buffer.length) add("buf", "indoor", p.buffer[0], { f: "Actual", unit: "°C", part: "buffer" });
   for (const c of p.circuits) add(`hk${c.n}`, "indoor", c.flowDid, { f: "Actual", unit: "°C", part: `hk${c.n}` });
   return S;
@@ -2666,6 +2686,7 @@ function plantParts(p) {
     discharge: p.discharge, oil: p.oil, heatkw: p.heatPower, elw: p.elPower,
     water: true, pump: p.pump, press: p.pressure, massflow: p.flowSensor,
     dhw: p.dhw, heater: p.heater, buffer: p.buffer.length > 0,
+    circ: p.circulation, divert: !!p.diverter,
     hk1: p.circuits.some((c) => c.n === 1), hk2: p.circuits.some((c) => c.n === 2),
     hk3: p.circuits.some((c) => c.n === 3), hk4: p.circuits.some((c) => c.n === 4),
   };
@@ -2705,6 +2726,8 @@ function buildPlantSvg(p) {
   g("water",
     svSensor(900, 160, false), V("ret", 900, 140), L(900, 190, "Rücklauf"),
     svSensor(900, 260, false), V("flow", 900, 290), L(900, 304, "Vorlauf"));
+  g("divert", svValve(700, 260), V("divert", 700, 290), L(700, 304, "Umschaltventil"));
+  g("circ", svPump(690, 215), V("circ", 690, 240), L(690, 196, "Zirkulation"));
   g("press", svSensor(760, 260, true), V("press", 760, 290), L(760, 304, "Druck"));
   g("massflow", svSensor(830, 260, true), V("massflow", 830, 290), L(830, 304, "Durchfluss"));
   g("dhw", svTank(720, 185, 34, 56), V("dhw", 737, 180), L(737, 255, "Warmwasser"));
@@ -2728,6 +2751,7 @@ function plantFormat(slot, v) {
   if (x && typeof x === "object") x = slot.f && slot.f in x ? x[slot.f] : x.Actual;
   if (x === undefined || x === null || typeof x === "object") return "–";
   if (typeof x !== "number") return String(x);
+  if (slot.map && slot.map[x] !== undefined) return slot.map[x];
   if (slot.scale) x *= slot.scale;
   const d = slot.d !== undefined ? slot.d : (slot.unit === "%" || slot.unit === "" ? 0 : 1);
   return `${fmtDe(x, d)}${slot.unit ? " " + slot.unit : ""}`;
@@ -2775,6 +2799,14 @@ function renderPlant() {
   kv("Solar", yesno(p.solar));
   kv("Durchflusssensor", yesno(p.flowSensor));
   kv("Drucksensor", yesno(p.pressure));
+  const ACTOR_DE = {
+    381: "Heizkreispumpe", 1842: "Umschaltventil", 1774: "Kurbelwannenheizung",
+    1775: "Lüfter 1", 1776: "Lüfter 2", 388: "Expansionsventil 1", 390: "Expansionsventil 2",
+    491: "Zirkulationspumpe", 386: "Umschaltventil", 1044: "Sekundärpumpe",
+  };
+  if (p.actors.length) {
+    kv("Aktoren (DID 1238)", p.actors.map((d) => ACTOR_DE[d] || didNames[d] || `DID ${d}`).join(", "));
+  }
   kv("Seriennummern", [p.serialIndoor, p.serialOutdoor].filter(Boolean).join(" / ") || "–");
   const raw = Object.entries(p.matrix).filter(([, v]) => typeof v === "string").map(([k, v]) => `${k}: ${v}`);
   if (raw.length) {
