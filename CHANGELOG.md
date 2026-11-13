@@ -24,7 +24,8 @@ bis dahin auf der Flash-Seite lag.
   gibt der Bus nicht her (nur Seriennummer und Nennleistung). Die Sondierung
   liegt als `/data/plant.json` auf dem Gerät und wandert mit der Sicherung.
   DID 1238 ist entschlüsselt (Liste der Aktoren als Datenpunktnummern) und
-  bringt Umschaltventil und Zirkulationspumpe ins Bild.
+  bringt Umschaltventil und Zirkulationspumpe ins Bild. Die Leitungen zeigen
+  die Fließrichtung, solange Verdichter beziehungsweise Pumpe laufen.
   Für Home Assistant erzeugt der Reiter dasselbe Bild als
   Picture-Elements-Karte: Hintergrund `/plant.svg` vom Gerät, Werte aus den
   per Discovery angelegten Sensoren, YAML zum Einfügen.

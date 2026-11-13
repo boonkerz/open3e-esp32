@@ -129,6 +129,12 @@ section.active { display: block; }
 .plant .ret { stroke: #60a5fa; }
 .plant .off { display: none; }
 .plant .stale { opacity: .45; }
+/* Flow direction: dashes travelling along the pipe in the direction the path
+   was drawn, which is the direction of flow in heating mode. Only while the
+   compressor or the pump actually runs; the speed follows their percentage. */
+.plant .pipe.run { stroke-dasharray: 12 10; animation: plantflow 1s linear infinite; }
+@keyframes plantflow { to { stroke-dashoffset: -22; } }
+@media (prefers-reduced-motion: reduce) { .plant .pipe.run { animation: none; } }
 
 .card {
   background: var(--panel);

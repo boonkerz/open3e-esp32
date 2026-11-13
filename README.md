@@ -438,7 +438,12 @@ verbessern, und das Gerät selbst deutet nichts.
 
 Die Werte im Bild werden **nacheinander** gelesen, ein Datenpunkt je Sekunde,
 nur solange der Reiter offen ist; jeder Lesevorgang ist eine Busrunde im
-HTTP-Server, zwei gleichzeitig würden sich nur gegenseitig aufhalten.
+HTTP-Server, zwei gleichzeitig würden sich nur gegenseitig aufhalten. Die
+Leitungen zeigen die **Fließrichtung** im Heizbetrieb als wandernde Striche:
+Kältemittel, solange der Verdichter läuft, Heizwasser, solange die Pumpe
+läuft, die Geschwindigkeit folgt der jeweiligen Prozentzahl; bei 0 % steht
+die Leitung. Im Hintergrundbild für Home Assistant läuft die Animation
+immer, weil das Bild von den Werten nichts weiß.
 
 **Home Assistant.** Dasselbe Bild gibt es als Picture-Elements-Karte: der
 Knopf *Datenpunkte des Schemas aufnehmen* ergänzt die Auswahl um die

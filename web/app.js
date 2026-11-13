@@ -2619,10 +2619,11 @@ function svFourWay(x, y) {
     sv("line", { x1: x - 6, y1: y - 6, x2: x + 6, y2: y + 6 }),
     sv("line", { x1: x - 6, y1: y + 6, x2: x + 6, y2: y - 6 }));
 }
-function svPump(x, y) {
+function svPump(x, y, angle = 0) {   /* the triangle points the way it pumps */
   return sv("g", { class: "sym" },
     sv("circle", { cx: x, cy: y, r: 12, fill: "#0b1020" }),
-    sv("path", { d: `M${x - 5},${y - 7} L${x + 8},${y} L${x - 5},${y + 7} Z`, fill: "#e6edf3" }));
+    sv("path", { d: `M${x - 5},${y - 7} L${x + 8},${y} L${x - 5},${y + 7} Z`, fill: "#e6edf3",
+                 transform: `rotate(${angle} ${x} ${y})` }));
 }
 function svFan(x, y) {
   const g = sv("g", { class: "sym" }, sv("circle", { cx: x, cy: y, r: 14, fill: "#0b1020" }));
@@ -2703,9 +2704,11 @@ function buildPlantSvg(p) {
   svg.append(svPipe("M325,100 H195 V140", "lo"));           /* EEV -> evaporator */
   svg.append(svPipe("M195,280 V350 H424", "lo"));           /* evaporator -> compressor */
   svg.append(svPipe("M476,350 H620 V280", "hi"));           /* compressor -> condenser */
-  /* heating water: return on top, flow at the bottom, consumers in between */
-  svg.append(svPipe("M640,160 H960 V260 H640", "ret"));
+  /* heating water: flow at the bottom towards the consumers, return along
+     the right and the top back into the condenser; drawn in flow direction
+     so the animation runs the right way */
   svg.append(svPipe("M640,260 H960", "flow"));
+  svg.append(svPipe("M960,260 V160 H640", "ret"));
 
   g("outside", svSensor(110, 175, false), V("outside", 110, 160), L(110, 196, "Außen"));
   g("fan1", svFan(110, 230), V("fan1", 110, 262));
@@ -2722,12 +2725,12 @@ function buildPlantSvg(p) {
   g("heatkw", V("heatkw", 585, 215, "end"), L(585, 229, "Wärme", "end"));
   g("elw", V("elw", 585, 250, "end"), L(585, 264, "elektrisch", "end"));
 
-  g("pump", svPump(690, 160), V("pump", 690, 140), L(690, 190, "Pumpe"));
+  g("pump", svPump(690, 160, 180), V("pump", 690, 140), L(690, 190, "Pumpe"));
   g("water",
     svSensor(900, 160, false), V("ret", 900, 140), L(900, 190, "Rücklauf"),
     svSensor(900, 260, false), V("flow", 900, 290), L(900, 304, "Vorlauf"));
   g("divert", svValve(680, 260), V("divert", 680, 290), L(680, 304, "Umschaltventil"));
-  g("circ", svPump(960, 210), V("circ", 938, 214, "end"), L(938, 228, "Zirkulation", "end"));
+  g("circ", svPump(960, 210, -90), V("circ", 938, 214, "end"), L(938, 228, "Zirkulation", "end"));
   g("press", svSensor(760, 260, true), V("press", 760, 290), L(760, 304, "Druck"));
   g("massflow", svSensor(830, 260, true), V("massflow", 830, 290), L(830, 304, "Durchfluss"));
   g("dhw", svTank(720, 185, 34, 56), V("dhw", 737, 180), L(737, 255, "Warmwasser"));
@@ -2744,6 +2747,29 @@ function buildPlantSvg(p) {
       lbl, V(`hk${n}`, x, 371));
   });
   return svg;
+}
+
+function plantNumber(slot, v) {
+  let x = v;
+  if (x && typeof x === "object") x = slot.f && slot.f in x ? x[slot.f] : x.Actual;
+  return typeof x === "number" ? x : undefined;
+}
+
+/* Pipes move while the machine behind them does: compressor speed drives the
+   refrigerant, pump speed the water; 0 % is standstill, 100 % the fastest. */
+const plantLiveNum = {};
+function plantFlow() {
+  const svg = $("plant-svg").querySelector("svg");
+  if (!svg) return;
+  const set = (sel, pct) => {
+    if (pct === undefined) return;
+    for (const p of svg.querySelectorAll(sel)) {
+      p.classList.toggle("run", pct > 0);
+      p.style.animationDuration = `${(0.5 + 2.5 * (1 - Math.min(pct, 100) / 100)).toFixed(2)}s`;
+    }
+  };
+  set(".pipe.hi, .pipe.lo", plantLiveNum.comp);
+  set(".pipe.flow, .pipe.ret", plantLiveNum.pump);
 }
 
 function plantFormat(slot, v) {
@@ -2831,6 +2857,7 @@ function renderPlant() {
     const t = $(`pv-${id}`);
     if (t) t.textContent = v;
   }
+  plantFlow();
   $("plant-note").textContent = "";
   plantLiveLoop();
 }
@@ -2863,6 +2890,10 @@ async function plantLiveLoop() {
           const r = await api(`/api/read?ecu=${plantProfile.roles[s.role].addr}&did=${s.did}`);
           plantLive[s.id] = plantFormat(s, r.value);
           if (t) { t.textContent = plantLive[s.id]; t.classList.remove("stale"); }
+          if (s.id === "comp" || s.id === "pump") {
+            plantLiveNum[s.id] = plantNumber(s, r.value);
+            plantFlow();
+          }
         } catch {
           if (t) t.classList.add("stale");
         }
@@ -2933,7 +2964,8 @@ function plantBackgroundSvg(p) {
   style.textContent =
     "text{font:13px system-ui,sans-serif;fill:#e6edf3}text.lbl{font-size:11px;fill:#9198a1}"
     + ".sym{fill:none;stroke:#e6edf3;stroke-width:2}"
-    + ".pipe{fill:none;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}"
+    + ".pipe{fill:none;stroke-width:4;stroke-linecap:round;stroke-linejoin:round;"
+    + "stroke-dasharray:12 10;animation:f 1.2s linear infinite}@keyframes f{to{stroke-dashoffset:-22}}"
     + ".hi{stroke:#f97316}.lo{stroke:#38bdf8}.flow{stroke:#ef4444}.ret{stroke:#60a5fa}";
   svg.prepend(style);
   return new XMLSerializer().serializeToString(svg);
