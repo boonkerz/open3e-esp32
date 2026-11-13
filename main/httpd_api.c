@@ -299,18 +299,21 @@ static esp_err_t h_status(httpd_req_t *r)
     o3e_buf_add_json_str(&b, net.ap_ssid);
     o3e_buf_adds(&b, "}, ");
 
-    /* busErrors is the driver's total and includes lost arbitration; the
-     * breakdown that follows is what it was made of. */
+    /* busErrors is the driver's total and includes lost arbitration and the
+     * interrupts that captured no code; the breakdown that follows is what
+     * it was made of. */
     snprintf(t, sizeof(t),
              "\"can\": {\"state\": \"%s\", \"txFailed\": %u, \"txRetries\": %u, "
              "\"txTimeouts\": %u, "
              "\"rxMissed\": %u, \"busErrors\": %u, \"arbLost\": %u, "
+             "\"uncaptured\": %u, "
              "\"bitErrors\": %u, \"stuffErrors\": %u, \"formErrors\": %u, "
              "\"crcErrors\": %u, \"ackErrors\": %u, \"otherErrors\": %u, "
              "\"rxErrors\": %u, \"txErrors\": %u, ",
              can.state ? can.state : "stopped", (unsigned)can.tx_failed,
              (unsigned)can.tx_retries, (unsigned)can.tx_timeouts, (unsigned)can.rx_missed,
              (unsigned)can.bus_errors, (unsigned)can.arb_lost,
+             (unsigned)can.uncaptured,
              (unsigned)can.bit_errors, (unsigned)can.stuff_errors,
              (unsigned)can.form_errors, (unsigned)can.crc_errors,
              (unsigned)can.ack_errors, (unsigned)can.other_errors,

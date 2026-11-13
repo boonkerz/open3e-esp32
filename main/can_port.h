@@ -41,6 +41,12 @@ typedef struct {
     uint32_t crc_errors;       /* the controller files these under "other" */
     uint32_t ack_errors;       /* while transmitting: nobody acknowledged */
     uint32_t other_errors;     /* "other" anywhere else in the frame */
+    /* Error interrupts whose capture register held no code. An empty
+     * register decodes as "bit error, transmitting, segment 0", and 0 is
+     * not a segment of any frame; such an event left TEC untouched and the
+     * frame being sent went through, so it is not counted as an error of
+     * any kind. Kept visible here because it did happen (#262). */
+    uint32_t uncaptured;
     /* Which side of the exchange the controller was on when it saw the
      * error. Receive errors are frames from the other node that arrived
      * damaged and were repeated by it; transmit errors are our own frames,

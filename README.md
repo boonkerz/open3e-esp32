@@ -184,7 +184,13 @@ Die Karte „CAN-Bus" zeigt vier Zähler, die Verschiedenes bedeuten:
 
 Die Aufschlüsselung liest die Firmware direkt aus dem Fehlerregister des
 Controllers, weil der ESP-IDF-Treiber davon nur vier Flags weiterreicht und
-einen CRC-Fehler gar nicht benennt.
+einen CRC-Fehler gar nicht benennt. Hält das Register bei einem
+Fehlerinterrupt gar keinen Code (es liest sich dann als „Bitfehler, Senden,
+Segment 0", und Segment 0 gibt es in keinem Frame), zählt die Firmware das
+nicht als Busfehler, sondern nur in `/api/status` unter `can.uncaptured`: bei
+solchen Ereignissen blieb der Fehlerzähler des Controllers auf null und das
+gesendete Frame kam im ersten Anlauf durch. Bis 0.3.0+b3d64f1 standen sie als
+„Bit" in der Karte und als „Code 0" bei der Fehlerstelle (#262).
 
 Ein paar Busfehler pro Minute hat fast jede Anlage; ein paar pro Sekunde sind
 ein Abschluss-, Masse- oder Störungsproblem, auch wenn alle Werte ankommen.

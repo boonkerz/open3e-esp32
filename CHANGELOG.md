@@ -44,6 +44,11 @@ bis dahin auf der Flash-Seite lag.
 
 ### Behoben
 
+- **Scheinbare Bitfehler „Code 0".** Ein Fehlerinterrupt ohne Inhalt im
+  Fehlerregister des Controllers wurde als Bitfehler beim Senden gezählt,
+  obwohl das Frame durchging und der Fehlerzähler bei null blieb. Solche
+  Ereignisse stehen jetzt nur noch in `/api/status` unter `can.uncaptured`
+  und nicht mehr als Busfehler in der Karte (#262).
 - **Anfragen gingen am internen Bus verloren** (ioBroker.e3oncan #262,
   Analyse von MyHomeMyData): etwa eine von 1500 am internen CAN einer
   Vitodens kam als „transport error" zurück, gefolgt von einem „no response"

@@ -220,7 +220,9 @@ function renderStatus(s) {
       [c.crcErrors, "CRC"], [c.bitErrors, "Bit"], [c.stuffErrors, "Stuff"],
       [c.formErrors, "Form"], [c.ackErrors, "ACK"], [c.otherErrors, "andere"],
     ].filter(([n]) => n);
-    const real = Math.max(0, c.busErrors - c.arbLost);
+    /* uncaptured: error interrupts with an empty capture register, which
+       older firmware showed as "Bit" errors in segment 0 (#262). */
+    const real = Math.max(0, c.busErrors - c.arbLost - (c.uncaptured || 0));
     $("s-buserr").textContent = kinds.length
       ? `${real} (${kinds.map(([n, k]) => `${n} ${k}`).join(", ")})` : `${real}`;
     $("s-arblost").textContent = c.arbLost;

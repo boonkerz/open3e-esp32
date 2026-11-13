@@ -251,21 +251,32 @@ static bool IRAM_ATTR on_error(twai_node_handle_t handle,
         return false;
     }
     twai_error_flags_t f = edata->err_flags;
-    if (f.arb_lost && !f.bit_err && !f.form_err && !f.stuff_err && !f.ack_err) {
-        /* Arbitration alone: the capture register still holds the previous
-         * error and must not be read as this one. An "other" error in the
-         * same interrupt is lost here; that combination is rare enough. */
+    if (f.arb_lost) {
+        /* Lost arbitration, alone or with an error flag in the same
+         * interrupt: the capture register holds whatever the previous error
+         * left there, or nothing, and must not be read as this one. For
+         * hal_send() it is an arbitration loss either way, which the time
+         * budget covers; a real error on the same frame would also have
+         * marked the frame failed and been counted on the next attempt. */
         stats.arb_lost++;
         s_tx_arb = true;
         return false;
-    }
-    if (f.arb_lost) {
-        stats.arb_lost++;
     }
     twai_ll_err_type_t type;
     twai_ll_err_dir_t dir;
     twai_ll_err_seg_t seg;
     twai_ll_parse_err_code_cap(TWAI_LL_GET_HW(0), &type, &dir, &seg);
+
+    if (seg == 0) {
+        /* Nothing was captured: an empty register reads as bit error,
+         * transmit direction, segment 0, and no frame has a segment 0. One
+         * setup counted 32 of these as transmit bit errors while TEC stayed
+         * at zero and every frame went through on the first attempt
+         * (ioBroker.e3oncan #262). Not an error of any kind, then, but it
+         * did happen, so it keeps its own counter. */
+        stats.uncaptured++;
+        return false;
+    }
 
     if (dir == TWAI_LL_ERR_DIR_RX) {
         stats.rx_errors++;
