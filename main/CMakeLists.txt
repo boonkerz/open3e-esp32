@@ -6,6 +6,7 @@ idf_component_register(
         "collect.c"
         "crashlog.c"
         "hold.c"
+        "plant_image.c"
         "collect_parse.c"
         "contact.c"
         "contact_io.c"

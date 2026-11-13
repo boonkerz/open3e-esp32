@@ -30,6 +30,7 @@
 #include "o3e_db.h"
 #include "ota.h"
 #include "poller.h"
+#include "plant_image.h"
 #include "raw_relay.h"
 #include "wg_link.h"
 
@@ -129,6 +130,7 @@ void app_main(void)
     if (!net_prov_is_setup_mode()) {
         mqtt_pub_start();
         poller_start();
+        plant_image_start();
         /* Passive: this only installs a receive filter, it never transmits. */
         if (sys.em380_enabled) {
             em380_start();

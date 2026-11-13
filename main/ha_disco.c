@@ -831,6 +831,21 @@ void ha_disco_counts(int *sensors, int *controls)
     }
 }
 
+/* Last known machine state, as the picture shows it. Unknown means moving:
+ * until someone has looked, the picture is the plain one. */
+static bool s_plant_comp = true;
+static bool s_plant_pump = true;
+
+void ha_disco_plant_state(bool compressor_running, bool pump_running)
+{
+    if (compressor_running == s_plant_comp && pump_running == s_plant_pump) {
+        return;
+    }
+    s_plant_comp = compressor_running;
+    s_plant_pump = pump_running;
+    ha_disco_plant_image(false);
+}
+
 void ha_disco_plant_image(bool clear)
 {
     mqtt_cfg_t cfg;
@@ -854,6 +869,26 @@ void ha_disco_plant_image(bool clear)
         mqtt_pub_raw(topic, "", true);
         mqtt_pub_raw(conf, "", true);
         return;
+    }
+    /* Idle circuits stand still: a style rule appended inside the document
+     * overrides the animation the web interface put there. */
+    if (!s_plant_comp || !s_plant_pump) {
+        char *end = strstr(svg, "</svg>");
+        if (end) {
+            const char *rule = (!s_plant_comp && !s_plant_pump)
+                ? "<style>.pipe{animation:none}</style>"
+                : (!s_plant_comp ? "<style>.hi,.lo{animation:none}</style>"
+                                 : "<style>.flow,.ret{animation:none}</style>");
+            size_t head = (size_t)(end - svg);
+            char *with = malloc(strlen(svg) + strlen(rule) + 1);
+            if (with) {
+                memcpy(with, svg, head);
+                strcpy(with + head, rule);
+                strcat(with, end);
+                free(svg);
+                svg = with;
+            }
+        }
     }
     mqtt_pub_raw(topic, svg, true);
     free(svg);

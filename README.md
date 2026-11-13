@@ -457,8 +457,11 @@ erreichbar wäre. Jeder Wert ist ein `state-label` der per Discovery
 angelegten Sensoren, an derselben Stelle wie im Reiter. Die Entitäts-IDs
 folgen der Regel von Home Assistant (`sensor.<Basis-Topic>_<Name>`); weicht
 eine ab, etwa nach einem Namenskonflikt, wird sie in der YAML angepasst.
-Ohne MQTT, oder falls Home Assistant das SVG in der Image-Entität nicht
-anzeigt: *SVG herunterladen*, die Datei nach `config/www/plant.svg` legen
+Damit das Bild in Home Assistant nicht läuft, während die Anlage steht,
+liest die Firmware alle 30 s Verdichterdrehzahl (2346) und Pumpe (381) und
+veröffentlicht das Bild bei einem Wechsel neu, mit stillgelegter Animation
+für den stehenden Kreis. Ohne MQTT, oder falls Home Assistant das SVG in der
+Image-Entität nicht anzeigt: *SVG herunterladen*, die Datei nach `config/www/plant.svg` legen
 und `image: /local/plant.svg` verwenden. Im LAN tut es auch
 `http://<Gateway>/plant.svg`; ein neues `storage.bin` löscht die Datei,
 *Karte erzeugen* legt sie wieder an.

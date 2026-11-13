@@ -28,7 +28,8 @@ bis dahin auf der Flash-Seite lag.
   die Fließrichtung, solange Verdichter beziehungsweise Pumpe laufen.
   Für Home Assistant erzeugt der Reiter dasselbe Bild als
   Picture-Elements-Karte: das leere Schema geht per MQTT als Image-Entität
-  an Home Assistant (so ist es auch von unterwegs sichtbar), die Werte
+  an Home Assistant (so ist es auch von unterwegs sichtbar, und die
+  Animation steht, wenn Verdichter oder Pumpe stehen), die Werte
   kommen aus den per Discovery angelegten Sensoren, YAML zum Einfügen;
   alternativ als Datei zum Herunterladen für `config/www`.
 

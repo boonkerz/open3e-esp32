@@ -27,4 +27,8 @@ void ha_disco_counts(int *sensors, int *controls);
  * picture itself -- reachable from outside, where the gateway is not. */
 void ha_disco_plant_image(bool clear);
 
+/* Which circuits are moving. The picture goes out again only when this
+ * changes; idle circuits get their animation switched off inside the SVG. */
+void ha_disco_plant_state(bool compressor_running, bool pump_running);
+
 #endif /* O3E_HA_DISCO_H */
