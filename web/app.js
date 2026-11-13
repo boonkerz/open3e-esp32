@@ -1796,8 +1796,23 @@ function initApp() {
   $("plant-probe").onclick = () => probePlant();
   $("plant-ha-points").onclick = (e) => plantHaPoints(e.currentTarget);
   $("plant-ha-card").onclick = (e) => plantHaCard(e.currentTarget);
-  $("plant-ha-copy").onclick = () => navigator.clipboard.writeText($("plant-ha-yaml").value)
-    .then(() => toast("YAML kopiert.", "ok"), () => $("plant-ha-yaml").select());
+  /* navigator.clipboard exists only on https or localhost; the gateway is
+     plain http on the LAN, so the old selection-based copy is the real path. */
+  $("plant-ha-copy").onclick = () => {
+    const ta = $("plant-ha-yaml");
+    ta.focus();
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch { ok = false; }
+    if (ok) {
+      toast("YAML kopiert.", "ok");
+    } else if (navigator.clipboard) {
+      navigator.clipboard.writeText(ta.value).then(() => toast("YAML kopiert.", "ok"),
+                                                   () => toast("Bitte markierten Text manuell kopieren.", "err"));
+    } else {
+      toast("Bitte markierten Text manuell kopieren (Strg+C).", "err");
+    }
+  };
   $("plant-ha-download").onclick = () => {
     if (!plantProfile || !plantProfile.outdoor) return;
     const blob = new Blob([plantBackgroundSvg(plantProfile)], { type: "image/svg+xml" });
@@ -2739,19 +2754,20 @@ function buildPlantSvg(p) {
     svSensor(900, 260, false), V("flow", 900, 290), L(900, 304, "Vorlauf"));
   g("divert", svValve(680, 260), V("divert", 680, 290), L(680, 304, "Umschaltventil"));
   g("circ", svPump(960, 210, -90), V("circ", 938, 214, "end"), L(938, 228, "Zirkulation", "end"));
-  g("press", svSensor(760, 260, true), V("press", 760, 290), L(760, 304, "Druck"));
-  g("massflow", svSensor(830, 260, true), V("massflow", 830, 290), L(830, 304, "Durchfluss"));
+  g("press", svSensor(800, 260, true), V("press", 800, 290), L(800, 304, "Druck"));
+  g("massflow", svSensor(860, 260, true), V("massflow", 860, 290), L(860, 304, "Durchfluss"));
   g("dhw", svTank(720, 185, 34, 56), V("dhw", 737, 180), L(737, 255, "Warmwasser"));
   g("heater", svHeater(800, 205), V("heater", 800, 180), L(800, 240, "Heizstab"));
   g("buffer", svTank(850, 185, 34, 56), V("buf", 867, 180), L(867, 255, "Puffer"));
   /* heating circuits as a row of boxes below the flow line */
   [1, 2, 3, 4].forEach((n, i) => {
-    const x = 700 + i * 82;
+    const x = 700 + i * 84;
     const c = p.circuits.find((k) => k.n === n);
-    const label = c && c.name ? c.name.slice(0, 16) : `Heizkreis ${n}`;
+    const full = c && c.name ? c.name : `Heizkreis ${n}`;
+    const label = full.length > 13 ? full.slice(0, 12) + "…" : full;
     const lbl = L(x, 353, label);
-    if (label.length > 11) lbl.setAttribute("font-size", "10");
-    g(`hk${n}`, sv("rect", { class: "sym", x: x - 39, y: 338, width: 78, height: 40, rx: 4, fill: "#0b1020" }),
+    if (label.length > 10) lbl.style.fontSize = "10px";
+    g(`hk${n}`, sv("rect", { class: "sym", x: x - 40, y: 338, width: 80, height: 40, rx: 4, fill: "#0b1020" }),
       lbl, V(`hk${n}`, x, 371));
   });
   return svg;
@@ -2970,7 +2986,7 @@ function plantBackgroundSvg(p) {
   svg.prepend(sv("rect", { width: 1000, height: 420, fill: "#0b1020" }));
   const style = sv("style", {});
   style.textContent =
-    "text{font:13px system-ui,sans-serif;fill:#e6edf3}text.lbl{font-size:11px;fill:#9198a1}"
+    "text{font:13px Arial,Helvetica,sans-serif;fill:#e6edf3}text.lbl{font-size:11px;fill:#9198a1}"
     + ".sym{fill:none;stroke:#e6edf3;stroke-width:2}"
     + ".pipe{fill:none;stroke-width:4;stroke-linecap:round;stroke-linejoin:round;"
     + "stroke-dasharray:12 10;animation:f 1.2s linear infinite}@keyframes f{to{stroke-dashoffset:-22}}"
