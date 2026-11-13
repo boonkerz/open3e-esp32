@@ -2735,6 +2735,9 @@ function renderPlant() {
   if (!p.probed) {
     $("plant-msg").textContent = "Noch nicht sondiert. „Anlage erkennen“ liest die Konfiguration.";
     $("plant-note").textContent = "";
+    /* The stored probe arrives after the device list at start-up; if the tab
+       is already open by then, this is the first chance to run one. */
+    if ($("tab-plant").classList.contains("active") && !plantBusy) probePlant();
     return;
   }
   kv("Lüfter", String(p.fans));

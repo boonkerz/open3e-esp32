@@ -13,6 +13,17 @@ bis dahin auf der Flash-Seite lag.
 
 ### Hinzugefügt
 
+- **Reiter „Anlage".** Erkennt die Konfiguration einer Wärmepumpe aus
+  Scan und einer einmaligen Sondierung (Rollen der Steuergeräte,
+  Sensorstatus `not_available` gegen `no_error`, Konfigurations-Datenpunkte)
+  und zeichnet Kältekreis und Hydraulik nach dem Vorbild der
+  Viessmann-Serviceansicht mit Live-Werten: Lüfter, Verdampfer,
+  Expansionsventil, Verdichter mit Saug- und Hochdruckseite, Vierwegeventil,
+  Verflüssiger, Pumpe, Vor-/Rücklauf, Warmwasser, Heizstab, Puffer,
+  Heizkreise. Teile, die die Anlage nicht hat, fehlen im Bild. Den Modellnamen
+  gibt der Bus nicht her (nur Seriennummer und Nennleistung). Die Sondierung
+  liegt als `/data/plant.json` auf dem Gerät und wandert mit der Sicherung.
+
 - **Schreibgrenzen je Datenpunkt.** Neue Spalte „Grenzen" in der
   Datenpunkttabelle (`10..60`, `..60`, `Comfort: 10..60`; Feld `range` in
   `points.json`). Home Assistant bekommt den Bereich als `min`/`max` seiner

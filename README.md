@@ -399,6 +399,58 @@ Wer so einen DID identifiziert, kann ihn übrigens
 
 ---
 
+## Anlage
+
+Der Reiter *Anlage* zeichnet den Kältekreis und die Hydraulik einer
+Wärmepumpe nach dem Vorbild der Viessmann-Serviceansicht, mit Live-Werten:
+Außentemperatur und Lüfter, Verdampfer, Expansionsventil, Verdichter mit Saug-
+und Hochdruckseite (Temperatur und Druck), Öltemperatur, Vierwegeventil,
+Verflüssiger mit Wärme- und elektrischer Leistung, Pumpe, Vor- und Rücklauf,
+Druck, Durchfluss, Warmwasserspeicher, Heizstab, Puffer und Heizkreise.
+
+**Was der Bus über die Anlage verrät.** Den Modellnamen nicht: DID 377 und
+2829 enthalten nur die Seriennummer, 963 (Ersatzteilnummer) wird abgelehnt.
+Lesbar sind die Nennwärmeleistung (2342), Verdichtertyp (2570) und
+Kältemittel (2568), also „Vitocal, 6 kW". Die **Konfiguration** dagegen lässt
+sich erkennen, aus drei Quellen:
+
+1. **Rollen der Steuergeräte** (DID 256): Innengerät ist der `HPMUMASTER`
+   (Wärmepumpe) oder `HMUMASTER` (Kessel), Außeneinheit, wer den Verdichter
+   (2346) meldet, bei einer Split-Anlage die `VCMU`, bei einem Monoblock der
+   Master selbst; `EHCU` ist der Heizstab, `EMCU` der Stromspeicher.
+2. **Was der Scan nicht auflistet, gibt es nicht.** Puffer-, Solar- oder
+   Durchflusssensor-Datenpunkte, die eine Anlage nicht hat, beantwortet sie
+   mit `conditionsNotCorrect` und fehlen im Scan.
+3. **Was antwortet, ist noch nicht verbaut.** Eine Vitocal beantwortet die
+   Sensoren aller vier Heizkreise und der Puffer; nicht belegte melden
+   `SensorStatus` **`not_available`** (ID 4) und −3276,8 als Wert, belegte
+   `no_error`. Dazu kommen Konfigurations-Datenpunkte wie 2574 (Leistung des
+   Heizstabs), 933–936 (Art des Heizkreises) und 1415–1418 (Betriebszustand).
+   Ein zweiter Lüfter meldet 255, wenn es ihn nicht gibt.
+
+Die **Sondierung** („Anlage erkennen", beim ersten Öffnen des Reiters und
+nach jedem Scan automatisch) liest dafür rund 70 Datenpunkte einmalig,
+nacheinander, und legt die Rohantworten unter `/api/plant` ab
+(`/data/plant.json`, in Sicherung und Wiederherstellung enthalten). Die
+Regeln, die daraus das Profil und das Bild machen, liegen in der
+Weboberfläche, nicht in der Firmware: sie lassen sich ohne Firmware-Update
+verbessern, und das Gerät selbst deutet nichts.
+
+Die Werte im Bild werden **nacheinander** gelesen, ein Datenpunkt je Sekunde,
+nur solange der Reiter offen ist; jeder Lesevorgang ist eine Busrunde im
+HTTP-Server, zwei gleichzeitig würden sich nur gegenseitig aufhalten.
+
+**Noch offen.** DID 952 `HydraulicMatrix` und 1549
+`HydraulicMatrixConfiguration` sind der eigentliche Hydraulikplan der Anlage,
+aber bisher nicht entschlüsselt; 1238 `AvailableActorSensorComponents` sieht
+nach einer Liste von 16-Bit-Kennungen aus (darin 0x06EF = 1775, Lüfter 1).
+Das Profil zeigt alle drei roh. Wer eine anders konfigurierte Anlage hat
+(Puffer, mehrere Heizkreise, Kühlung, Monoblock): eine Sicherung mit Scan und
+Sondierung als Issue hilft, die Matrix über mehrere Anlagen zu vergleichen und
+die Modelltabelle (Herstellnummer → Modell) zu füllen.
+
+---
+
 ## MQTT
 
 Standard-Topic ist `open3e/<Formatstring>`, Default-Formatstring `{didName}` —
