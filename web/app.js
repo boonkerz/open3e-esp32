@@ -2371,17 +2371,21 @@ const plantLive = {};      /* slot id -> last value shown */
 
 const plantSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/* Material-number prefix (first seven digits of the serial) -> model name.
-   Filled from installations whose owners know what they bought; an unknown
-   prefix falls back to "Vitocal, n kW". */
-const MODEL_TABLE = {};
+/* Material-number prefix (first seven digits of the serial) -> what it is.
+   The bus never says; the numbers appear in Viessmann's spare-part lists
+   next to the type designation, which is where these come from. An unknown
+   prefix falls back to "Vitocal, n kW" from the nominal capacity. */
+const MODEL_TABLE = {
+  "7994220": { family: "Vitocal 252-A", unit: "Innengerät AWOT-E-AC 251.A16" },
+  "7994308": { family: "Vitocal 25x-A", unit: "Außeneinheit A06, 230 V" },
+};
 
 /* Datapoints the probe reads, by controller role. Only those the scan lists
    for that controller are requested, so a missing part costs no round trip. */
 const PLANT_PROBE = [
   /* indoor: hydraulics, tanks, circuits, electric heater, identification */
   ...[274, 268, 269, 271, 3232, 3233, 3234, 277, 278, 279, 281, 3016, 3017, 3018,
-      284, 286, 288, 290, 1415, 1416, 1417, 1418, 933, 934, 935, 936,
+      284, 286, 288, 290, 1415, 1416, 1417, 1418, 933, 934, 935, 936, 627, 628, 629, 630,
       318, 376, 273, 275, 381, 386, 491, 1044,
       2574, 2340, 2352, 2487, 2342, 2611, 2498, 2850, 2486, 2494,
       952, 1549, 1238, 1660, 377].map((did) => ({ role: "indoor", did })),
@@ -2428,12 +2432,17 @@ function plantFitted(role, did) {
 }
 
 function plantModel(roles) {
-  const serial = (plantVal("indoor", 377) || plantVal("outdoor", 377) || "").toString();
-  const prefix = serial.slice(0, 7);
+  const pin = String(plantVal("indoor", 377) || "").slice(0, 7);
+  const pout = String(plantVal("outdoor", 377) || "").slice(0, 7);
   const kw = plantVal("indoor", 2342) || plantVal("outdoor", 2342);
-  if (MODEL_TABLE[prefix]) return MODEL_TABLE[prefix];
-  let name = roles.outdoor ? "Vitocal" : "Wärmeerzeuger";
-  if (kw) name += `, ${fmtDe(kw / 1000, 0)} kW`;
+  const i = MODEL_TABLE[pin];
+  const o = MODEL_TABLE[pout];
+  /* The indoor unit names the family (252-A has the tank built in, 250-A
+     not); the outdoor unit names the size. */
+  let name = (i && i.family) || (o && o.family) || (roles.outdoor ? "Vitocal" : "Wärmeerzeuger");
+  if (!i && kw) name += `, ${fmtDe(kw / 1000, 0)} kW`;
+  const parts = [i && i.unit, o && o.unit].filter(Boolean);
+  if (parts.length) name += ` (${parts.join("; ")})`;
   return name;
 }
 
@@ -2455,8 +2464,10 @@ function derivePlant() {
     const prop = plantVal("indoor", 933 + i);
     const on = fitted("indoor", flowDid) || (op && op.Mode && op.Mode.ID !== 0);
     if (on) {
+      const name = plantVal("indoor", 627 + i);
       circuits.push({
         n: i + 1, flowDid,
+        name: typeof name === "string" ? name.trim() : "",
         type: prop && prop.MixerCircuitType ? prop.MixerCircuitType.Text : "",
         mode: op && op.Mode ? op.Mode.Text : "",
       });
@@ -2698,8 +2709,10 @@ function buildPlantSvg(p) {
   /* heating circuits as a row of boxes below the flow line */
   [1, 2, 3, 4].forEach((n, i) => {
     const x = 740 + i * 76;
+    const c = p.circuits.find((k) => k.n === n);
+    const label = c && c.name ? c.name.slice(0, 14) : `Heizkreis ${n}`;
     g(`hk${n}`, sv("rect", { class: "sym", x: x - 34, y: 338, width: 68, height: 40, rx: 4, fill: "#0b1020" }),
-      L(x, 353, `Heizkreis ${n}`), V(`hk${n}`, x, 371));
+      L(x, 353, label), V(`hk${n}`, x, 371));
   });
   return svg;
 }
@@ -2750,7 +2763,7 @@ function renderPlant() {
     Unmixed: "ungemischt", Mixed: "gemischt",
   };
   kv("Heizkreise", p.circuits.length
-     ? p.circuits.map((c) => `${c.n}${c.type ? ": " + (CIRCUIT_DE[c.type] || c.type) : ""}`).join(", ")
+     ? p.circuits.map((c) => `${c.name || c.n}${c.type ? " (" + (CIRCUIT_DE[c.type] || c.type) + ")" : ""}`).join(", ")
      : "keiner");
   kv("Heizstab", p.heater ? (p.heaterW ? `${fmtDe(p.heaterW / 1000, 1)} kW` : "ja") : "nein");
   kv("Solar", yesno(p.solar));
