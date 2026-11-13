@@ -2708,11 +2708,13 @@ function buildPlantSvg(p) {
   g("buffer", svTank(850, 185, 34, 56), V("buf", 867, 180), L(867, 255, "Puffer"));
   /* heating circuits as a row of boxes below the flow line */
   [1, 2, 3, 4].forEach((n, i) => {
-    const x = 740 + i * 76;
+    const x = 700 + i * 82;
     const c = p.circuits.find((k) => k.n === n);
-    const label = c && c.name ? c.name.slice(0, 14) : `Heizkreis ${n}`;
-    g(`hk${n}`, sv("rect", { class: "sym", x: x - 34, y: 338, width: 68, height: 40, rx: 4, fill: "#0b1020" }),
-      L(x, 353, label), V(`hk${n}`, x, 371));
+    const label = c && c.name ? c.name.slice(0, 16) : `Heizkreis ${n}`;
+    const lbl = L(x, 353, label);
+    if (label.length > 11) lbl.setAttribute("font-size", "10");
+    g(`hk${n}`, sv("rect", { class: "sym", x: x - 39, y: 338, width: 78, height: 40, rx: 4, fill: "#0b1020" }),
+      lbl, V(`hk${n}`, x, 371));
   });
   return svg;
 }
