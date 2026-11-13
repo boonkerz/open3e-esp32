@@ -965,6 +965,29 @@ static esp_err_t h_plant_put(httpd_req_t *r)
     return send_json(r, "{\"ok\": true}");
 }
 
+/* The schematic without values, drawn by the browser from the profile and
+ * stored next to the web files, so Home Assistant's picture-elements card can
+ * use http://<gateway>/plant.svg as its background. Served by serve_file()
+ * like any other asset; a new storage image drops it, and the card button
+ * puts it back. */
+static esp_err_t h_plant_svg_put(httpd_req_t *r)
+{
+    char *body = read_body(r);
+    if (!body) {
+        return ESP_OK;
+    }
+    if (strncmp(body, "<svg", 4) != 0) {
+        free(body);
+        return send_err(r, 400, "expected an SVG document");
+    }
+    bool ok = app_config_write_file(CFG_WWW_DIR "/plant.svg", body, strlen(body));
+    free(body);
+    if (!ok) {
+        return send_err(r, 500, "could not save the picture");
+    }
+    return send_json(r, "{\"ok\": true}");
+}
+
 static esp_err_t h_points_put(httpd_req_t *r)
 {
     char *body = read_body(r);
@@ -2579,6 +2602,7 @@ static const httpd_uri_t routes[] = {
     { "/api/points",      HTTP_PUT,  h_points_put,   NULL },
     { "/api/plant",       HTTP_GET,  h_plant_get,    NULL },
     { "/api/plant",       HTTP_PUT,  h_plant_put,    NULL },
+    { "/api/plant/svg",   HTTP_PUT,  h_plant_svg_put, NULL },
     { "/api/read",        HTTP_GET,  h_read,         NULL },
     { "/api/write",       HTTP_POST, h_write,        NULL },
     { "/api/grid",        HTTP_POST, h_grid,         NULL },

@@ -440,6 +440,17 @@ Die Werte im Bild werden **nacheinander** gelesen, ein Datenpunkt je Sekunde,
 nur solange der Reiter offen ist; jeder Lesevorgang ist eine Busrunde im
 HTTP-Server, zwei gleichzeitig würden sich nur gegenseitig aufhalten.
 
+**Home Assistant.** Dasselbe Bild gibt es als Picture-Elements-Karte: der
+Knopf *Datenpunkte des Schemas aufnehmen* ergänzt die Auswahl um die
+Datenpunkte des Bildes (15 s, JSON, HA-Häkchen), *Karte erzeugen* legt das
+leere Schema als `/plant.svg` auf dem Gerät ab und erzeugt die YAML einer
+`picture-elements`-Karte, in der jeder Wert ein `state-label` der per
+Discovery angelegten Sensoren ist, an derselben Stelle wie im Reiter. Die
+Entitäts-IDs folgen der Regel von Home Assistant
+(`sensor.<Basis-Topic>_<Name>`); weicht eine ab, etwa nach einem
+Namenskonflikt, wird sie in der YAML angepasst. Ein neues `storage.bin`
+löscht `/plant.svg`, der Knopf legt es wieder an.
+
 **Noch offen.** DID 952 `HydraulicMatrix` und 1549
 `HydraulicMatrixConfiguration` sind der eigentliche Hydraulikplan der Anlage,
 aber bisher nicht entschlüsselt; 1238 `AvailableActorSensorComponents` sieht

@@ -1794,6 +1794,10 @@ function initApp() {
     };
   }
   $("plant-probe").onclick = () => probePlant();
+  $("plant-ha-points").onclick = (e) => plantHaPoints(e.currentTarget);
+  $("plant-ha-card").onclick = (e) => plantHaCard(e.currentTarget);
+  $("plant-ha-copy").onclick = () => navigator.clipboard.writeText($("plant-ha-yaml").value)
+    .then(() => toast("YAML kopiert.", "ok"), () => $("plant-ha-yaml").select());
 
   /* Unterteilung der Einstellungen. Der zuletzt geöffnete Bereich wird
      gemerkt: wer an MQTT arbeitet, landet nach jedem Neuladen sonst wieder
@@ -2836,6 +2840,110 @@ async function plantLiveLoop() {
     }
   } finally {
     plantRunning = false;
+  }
+}
+
+/* ---- Home Assistant: the same picture as a picture-elements card ---- */
+
+/* Home Assistant builds the entity id of a discovered sensor from the device
+   name and the entity name, both slugified. Discovery here names the device
+   after the base topic and the entity after datapoint and field. */
+function plantHaEntity(slot) {
+  const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  const base = ($("mq-base") && $("mq-base").value) || "open3e";
+  const name = `${didNames[slot.did] || "did" + slot.did}${slot.f ? " " + slot.f : ""}`;
+  return `sensor.${slug(base)}_${slug(name)}`;
+}
+
+/* Every datapoint the picture uses goes into the selection with the HA flag,
+   so discovery announces the sensors the card refers to. Existing entries
+   keep their interval and mode; only the flag is switched on. */
+async function plantHaPoints(btn) {
+  const p = plantProfile;
+  if (!p || !p.outdoor) return;
+  btn.disabled = true;
+  let added = 0, flagged = 0;
+  try {
+    for (const s of plantActiveSlots()) {
+      const dev = p.roles[s.role];
+      const key = pointKey(dev.addr, s.did);
+      const cur = selection.get(key);
+      if (cur) {
+        if (!cur.ha) { cur.ha = true; flagged++; }
+        continue;
+      }
+      const hit = dev.dids.find((x) => x[0] === s.did);
+      selection.set(key, { ecu: dev.addr, did: s.did, len: hit ? hit[1] : 0, enabled: true,
+                           interval: 15, mode: "json", topic: "", ha: true });
+      added++;
+    }
+    await api("/api/points", { method: "PUT", body: JSON.stringify([...selection.values()]) });
+    await loadPoints();
+    $("plant-ha-msg").textContent = `${added} Datenpunkte aufgenommen, ${flagged} für HA freigeschaltet.`;
+  } catch (e) {
+    $("plant-ha-msg").textContent = e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* The picture without values: the stylesheet's rules travel inside, since the
+   file is loaded as an image, and the dark ground becomes a rectangle. */
+function plantBackgroundSvg(p) {
+  const svg = buildPlantSvg(p);
+  const parts = plantParts(p);
+  for (const n of svg.querySelectorAll("[data-part]")) {
+    if (!parts[n.dataset.part]) n.remove();
+  }
+  for (const t of svg.querySelectorAll("text.val")) t.remove();
+  svg.prepend(sv("rect", { width: 1000, height: 420, fill: "#0b1020" }));
+  const style = sv("style", {});
+  style.textContent =
+    "text{font:13px system-ui,sans-serif;fill:#e6edf3}text.lbl{font-size:11px;fill:#9198a1}"
+    + ".sym{fill:none;stroke:#e6edf3;stroke-width:2}"
+    + ".pipe{fill:none;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}"
+    + ".hi{stroke:#f97316}.lo{stroke:#38bdf8}.flow{stroke:#ef4444}.ret{stroke:#60a5fa}";
+  svg.prepend(style);
+  return new XMLSerializer().serializeToString(svg);
+}
+
+async function plantHaCard(btn) {
+  const p = plantProfile;
+  if (!p || !p.outdoor) return;
+  btn.disabled = true;
+  try {
+    await fetch("/api/plant/svg", { method: "PUT", body: plantBackgroundSvg(p) })
+      .then(async (r) => { if (!r.ok) throw new Error((await r.json()).error || `HTTP ${r.status}`); });
+    /* Positions come from the drawn picture itself, so card and picture never
+       drift apart; percentages because the card scales with the dashboard. */
+    const svg = buildPlantSvg(p);
+    const lines = ["type: picture-elements", `image: http://${location.host}/plant.svg`, "elements:"];
+    for (const s of plantActiveSlots()) {
+      const t = svg.querySelector(`#pv-${s.id}`);
+      if (!t) continue;
+      const anchor = t.getAttribute("text-anchor");
+      let left = Number(t.getAttribute("x")) / 10;
+      const top = Number(t.getAttribute("y")) / 4.2 - 1.2;
+      if (anchor === "start") left += 3;
+      if (anchor === "end") left -= 3;
+      lines.push(`  - type: state-label`,
+                 `    entity: ${plantHaEntity(s)}`,
+                 `    style:`,
+                 `      top: ${top.toFixed(1)}%`,
+                 `      left: ${left.toFixed(1)}%`,
+                 `      color: "#e6edf3"`,
+                 `      font-weight: "600"`,
+                 `      font-size: 13px`);
+    }
+    const ta = $("plant-ha-yaml");
+    ta.value = lines.join("\n");
+    ta.hidden = false;
+    $("plant-ha-copy").hidden = false;
+    $("plant-ha-msg").textContent = `Bild unter http://${location.host}/plant.svg abgelegt, ${plantActiveSlots().length} Werte in der Karte.`;
+  } catch (e) {
+    $("plant-ha-msg").textContent = e.message;
+  } finally {
+    btn.disabled = false;
   }
 }
 

@@ -23,6 +23,9 @@ bis dahin auf der Flash-Seite lag.
   Heizkreise. Teile, die die Anlage nicht hat, fehlen im Bild. Den Modellnamen
   gibt der Bus nicht her (nur Seriennummer und Nennleistung). Die Sondierung
   liegt als `/data/plant.json` auf dem Gerät und wandert mit der Sicherung.
+  Für Home Assistant erzeugt der Reiter dasselbe Bild als
+  Picture-Elements-Karte: Hintergrund `/plant.svg` vom Gerät, Werte aus den
+  per Discovery angelegten Sensoren, YAML zum Einfügen.
 
 - **Schreibgrenzen je Datenpunkt.** Neue Spalte „Grenzen" in der
   Datenpunkttabelle (`10..60`, `..60`, `Comfort: 10..60`; Feld `range` in
