@@ -2756,7 +2756,13 @@ function buildPlantSvg(p) {
   g("circ", svPump(960, 210, -90), V("circ", 938, 214, "end"), L(938, 228, "Zirkulation", "end"));
   g("press", svSensor(800, 260, true), V("press", 800, 290), L(800, 304, "Druck"));
   g("massflow", svSensor(860, 260, true), V("massflow", 860, 290), L(860, 304, "Durchfluss"));
-  g("dhw", svTank(720, 185, 34, 56), V("dhw", 737, 180), L(737, 255, "Warmwasser"));
+  /* The diverter valve's second way: flow up into the tank's coil and back
+     out to the return line, so the picture shows where the one pump's water
+     goes when hot water is being made. */
+  g("dhw",
+    svPipe("M680,250 V213 H718", "flow"),
+    svPipe("M756,213 H770 V162", "ret"),
+    svTank(720, 185, 34, 56), V("dhw", 737, 180), L(737, 255, "Warmwasser"));
   g("heater", svHeater(800, 205), V("heater", 800, 180), L(800, 240, "Heizstab"));
   g("buffer", svTank(850, 185, 34, 56), V("buf", 867, 180), L(867, 255, "Puffer"));
   /* heating circuits as a row of boxes below the flow line */
