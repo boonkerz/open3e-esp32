@@ -3077,7 +3077,7 @@ async function plantHaCard(btn) {
     if (mqttOn) {
       lines.push(`image_entity: image.${slug(base)}_anlagenschema`,
                  `# Alternativ ohne MQTT-Bild: image: /local/plant.svg (Datei aus „SVG herunterladen“ nach config/www)`,
-                 `# Fertiges Bild mit Werten (Grafana u. a.): MQTT-Topic ${base}/plant/live, retained, image/svg+xml, jede Minute`);
+                 `# Fertiges Bild mit Werten (Grafana u. a.): MQTT-Topic ${base}/plant/live, retained, image/svg+xml, jede Minute; Base64 auf ${base}/plant/live/b64`);
     } else {
       lines.push(`image: /local/plant.svg`,
                  `# Datei aus „SVG herunterladen“ nach config/www kopieren; nur im LAN geht auch http://${location.host}/plant.svg`);

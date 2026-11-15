@@ -463,7 +463,9 @@ Platzhaltern und die Liste der Datenpunkte dahinter auf dem Gerät ab
 (`PUT /api/plant/live`, `PUT /api/plant/slots`). Die Firmware liest die
 Werte jede Minute nacheinander vom Bus, setzt sie ein und veröffentlicht das
 fertige SVG retained auf `<Basis>/plant/live` (auch als Image-Entität
-`image.<Basis-Topic>_anlagenschema_live` angemeldet). Grafana zeigt es
+`image.<Basis-Topic>_anlagenschema_live` angemeldet), dasselbe Base64-codiert
+auf `<Basis>/plant/live/b64` für Bild-Panels, die eine Data-URL erwarten
+(`data:image/svg+xml;base64,…`). Grafana zeigt es
 beispielsweise über ein Bild-Panel, das Node-RED aus dem Topic befüllt, eine
 Wandanzeige abonniert das Topic direkt. Zahlen kommen mit Dezimalkomma und
 Einheit wie im Reiter, Zustände als Wort.

@@ -1,5 +1,7 @@
 #include "ha_disco.h"
 
+#include "mbedtls/base64.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -914,6 +916,23 @@ void ha_disco_plant_live(const char *svg)
     }
     copy = plant_styled(copy);
     mqtt_pub_raw(topic, copy, true);
+    /* The same picture Base64-coded on <base>/plant/live/b64: Grafana's image
+     * panels take a data URL but not raw SVG text (lingej, #22). */
+    size_t len = strlen(copy);
+    size_t need = 0;
+    mbedtls_base64_encode(NULL, 0, &need, (const unsigned char *)copy, len);
+    char *b64 = malloc(need + 1);
+    if (b64) {
+        size_t olen = 0;
+        if (mbedtls_base64_encode((unsigned char *)b64, need, &olen,
+                                  (const unsigned char *)copy, len) == 0) {
+            b64[olen] = '\0';
+            char t64[CFG_TOPIC_MAX + 24];
+            snprintf(t64, sizeof(t64), "%s/plant/live/b64", cfg.base_topic);
+            mqtt_pub_raw(t64, b64, true);
+        }
+        free(b64);
+    }
     free(copy);
     plant_image_config(&cfg, dev_id, "plant_live", "Anlagenschema live", topic, false);
 }
