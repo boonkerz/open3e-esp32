@@ -836,6 +836,88 @@ void ha_disco_counts(int *sensors, int *controls)
 static bool s_plant_comp = true;
 static bool s_plant_pump = true;
 
+/* Idle circuits stand still: a style rule appended inside the document
+ * overrides the animation the web interface put there. Takes ownership of
+ * `svg` and returns the document to publish (the same one when nothing
+ * stands still or memory is short). */
+static char *plant_styled(char *svg)
+{
+    if (s_plant_comp && s_plant_pump) {
+        return svg;
+    }
+    char *end = strstr(svg, "</svg>");
+    if (!end) {
+        return svg;
+    }
+    const char *rule = (!s_plant_comp && !s_plant_pump)
+        ? "<style>.pipe{animation:none}</style>"
+        : (!s_plant_comp ? "<style>.hi,.lo{animation:none}</style>"
+                         : "<style>.flow,.ret{animation:none}</style>");
+    size_t head = (size_t)(end - svg);
+    char *with = malloc(strlen(svg) + strlen(rule) + 1);
+    if (!with) {
+        return svg;
+    }
+    memcpy(with, svg, head);
+    strcpy(with + head, rule);
+    strcat(with, end);
+    free(svg);
+    return with;
+}
+
+/* One image entity's discovery config, or its retraction. */
+static void plant_image_config(const mqtt_cfg_t *cfg, const char *dev_id,
+                               const char *object, const char *name,
+                               const char *image_topic, bool clear)
+{
+    char conf[352];
+    snprintf(conf, sizeof(conf), "%s/image/%s/%s/config", cfg->ha_prefix, dev_id, object);
+    if (clear || !cfg->ha_discovery) {
+        if (clear) {
+            mqtt_pub_raw(conf, "", true);
+        }
+        return;
+    }
+    o3e_buf_t b;
+    o3e_buf_init(&b);
+    o3e_buf_adds(&b, "{\"name\": ");
+    o3e_buf_add_json_str(&b, name);
+    o3e_buf_adds(&b, ", \"image_topic\": ");
+    o3e_buf_add_json_str(&b, image_topic);
+    o3e_buf_adds(&b, ", \"content_type\": \"image/svg+xml\", \"unique_id\": ");
+    char uid[64];
+    snprintf(uid, sizeof(uid), "%s_%s", dev_id, object);
+    o3e_buf_add_json_str(&b, uid);
+    o3e_buf_adds(&b, ", \"device\": {\"identifiers\": [");
+    o3e_buf_add_json_str(&b, dev_id);
+    o3e_buf_adds(&b, "]}}");
+    if (!b.oom && b.buf) {
+        mqtt_pub_raw(conf, b.buf, true);
+    }
+    o3e_buf_free(&b);
+}
+
+void ha_disco_plant_live(const char *svg)
+{
+    mqtt_cfg_t cfg;
+    mqtt_cfg_get(&cfg);
+    if (!cfg.enabled || !mqtt_pub_connected() || !svg) {
+        return;
+    }
+    char dev_id[32];
+    device_id(dev_id, sizeof(dev_id));
+    char topic[CFG_TOPIC_MAX + 16];
+    snprintf(topic, sizeof(topic), "%s/plant/live", cfg.base_topic);
+    char *copy = strdup(svg);
+    if (!copy) {
+        return;
+    }
+    copy = plant_styled(copy);
+    mqtt_pub_raw(topic, copy, true);
+    free(copy);
+    plant_image_config(&cfg, dev_id, "plant_live", "Anlagenschema live", topic, false);
+}
+
 void ha_disco_plant_state(bool compressor_running, bool pump_running)
 {
     if (compressor_running == s_plant_comp && pump_running == s_plant_pump) {
@@ -868,28 +950,15 @@ void ha_disco_plant_image(bool clear)
         free(svg);
         mqtt_pub_raw(topic, "", true);
         mqtt_pub_raw(conf, "", true);
+        /* The filled picture goes with it; plant_image.c renders a new one
+         * within a minute if the template is still there. */
+        char live[CFG_TOPIC_MAX + 16];
+        snprintf(live, sizeof(live), "%s/plant/live", cfg.base_topic);
+        mqtt_pub_raw(live, "", true);
+        plant_image_config(&cfg, dev_id, "plant_live", "", live, true);
         return;
     }
-    /* Idle circuits stand still: a style rule appended inside the document
-     * overrides the animation the web interface put there. */
-    if (!s_plant_comp || !s_plant_pump) {
-        char *end = strstr(svg, "</svg>");
-        if (end) {
-            const char *rule = (!s_plant_comp && !s_plant_pump)
-                ? "<style>.pipe{animation:none}</style>"
-                : (!s_plant_comp ? "<style>.hi,.lo{animation:none}</style>"
-                                 : "<style>.flow,.ret{animation:none}</style>");
-            size_t head = (size_t)(end - svg);
-            char *with = malloc(strlen(svg) + strlen(rule) + 1);
-            if (with) {
-                memcpy(with, svg, head);
-                strcpy(with + head, rule);
-                strcat(with, end);
-                free(svg);
-                svg = with;
-            }
-        }
-    }
+    svg = plant_styled(svg);
     mqtt_pub_raw(topic, svg, true);
     free(svg);
     if (!cfg.ha_discovery) {

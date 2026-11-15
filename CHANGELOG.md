@@ -31,7 +31,9 @@ bis dahin auf der Flash-Seite lag.
   an Home Assistant (so ist es auch von unterwegs sichtbar, und die
   Animation steht, wenn Verdichter oder Pumpe stehen), die Werte
   kommen aus den per Discovery angelegten Sensoren, YAML zum Einfügen;
-  alternativ als Datei zum Herunterladen für `config/www`.
+  alternativ als Datei zum Herunterladen für `config/www`. Für Grafana und
+  andere Anzeigen ohne Overlay veröffentlicht die Firmware jede Minute das
+  fertige Bild mit eingesetzten Werten auf `<Basis>/plant/live`.
 
 - **Schreibgrenzen je Datenpunkt.** Neue Spalte „Grenzen" in der
   Datenpunkttabelle (`10..60`, `..60`, `Comfort: 10..60`; Feld `range` in

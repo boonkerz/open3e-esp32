@@ -457,6 +457,17 @@ erreichbar wäre. Jeder Wert ist ein `state-label` der per Discovery
 angelegten Sensoren, an derselben Stelle wie im Reiter. Die Entitäts-IDs
 folgen der Regel von Home Assistant (`sensor.<Basis-Topic>_<Name>`); weicht
 eine ab, etwa nach einem Namenskonflikt, wird sie in der YAML angepasst.
+**Fertiges Bild mit Werten.** Wer kein Home Assistant hat, bekommt das
+Schema trotzdem: *Karte erzeugen* legt zusätzlich eine Vorlage mit
+Platzhaltern und die Liste der Datenpunkte dahinter auf dem Gerät ab
+(`PUT /api/plant/live`, `PUT /api/plant/slots`). Die Firmware liest die
+Werte jede Minute nacheinander vom Bus, setzt sie ein und veröffentlicht das
+fertige SVG retained auf `<Basis>/plant/live` (auch als Image-Entität
+`image.<Basis-Topic>_anlagenschema_live` angemeldet). Grafana zeigt es
+beispielsweise über ein Bild-Panel, das Node-RED aus dem Topic befüllt, eine
+Wandanzeige abonniert das Topic direkt. Zahlen kommen mit Dezimalkomma und
+Einheit wie im Reiter, Zustände als Wort.
+
 Damit das Bild in Home Assistant nicht läuft, während die Anlage steht,
 liest die Firmware alle 30 s Verdichterdrehzahl (2346) und Pumpe (381) und
 veröffentlicht das Bild bei einem Wechsel neu, mit stillgelegter Animation

@@ -31,4 +31,10 @@ void ha_disco_plant_image(bool clear);
  * changes; idle circuits get their animation switched off inside the SVG. */
 void ha_disco_plant_state(bool compressor_running, bool pump_running);
 
+/* The picture with the values already in it, rendered by plant_image.c:
+ * retained on <base>/plant/live and announced as a second image entity.
+ * For dashboards that cannot overlay sensors on a background, Grafana among
+ * them. The idle-circuit style is applied here like for the background. */
+void ha_disco_plant_live(const char *svg);
+
 #endif /* O3E_HA_DISCO_H */

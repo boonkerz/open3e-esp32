@@ -271,7 +271,10 @@
       in ein Dashboard (Bearbeiten → Karte hinzufügen → Manuell). Zeigt Home
       Assistant die Image-Entität nicht an: SVG herunterladen, nach
       <span class="mono">config/www/plant.svg</span> legen und in der YAML
-      <span class="mono">image: /local/plant.svg</span> verwenden.</p>
+      <span class="mono">image: /local/plant.svg</span> verwenden. Für
+      Grafana, Node-RED oder eine Wandanzeige veröffentlicht das Gateway
+      außerdem jede Minute das <b>fertige Bild mit Werten</b> auf
+      <span class="mono">&lt;Basis&gt;/plant/live</span> (retained, SVG).</p>
     <div class="row">
       <button class="btn sec" id="plant-ha-points" style="flex:0 0 auto">Datenpunkte des Schemas aufnehmen</button>
       <button class="btn" id="plant-ha-card" style="flex:0 0 auto">Karte erzeugen</button>

@@ -989,6 +989,42 @@ static esp_err_t h_plant_svg_put(httpd_req_t *r)
     return send_json(r, "{\"ok\": true}");
 }
 
+/* The same picture as a template with {{id}} in place of every value, plus
+ * the list of datapoints behind the ids: plant_image.c fills it every minute
+ * and publishes the result, for dashboards that want a finished image. */
+static esp_err_t h_plant_live_put(httpd_req_t *r)
+{
+    char *body = read_body(r);
+    if (!body) {
+        return ESP_OK;
+    }
+    if (strncmp(body, "<svg", 4) != 0) {
+        free(body);
+        return send_err(r, 400, "expected an SVG document");
+    }
+    bool ok = app_config_write_file(CFG_WWW_DIR "/plant_live.svg", body, strlen(body));
+    free(body);
+    return ok ? send_json(r, "{\"ok\": true}") : send_err(r, 500, "could not save the template");
+}
+
+static esp_err_t h_plant_slots_put(httpd_req_t *r)
+{
+    char *body = read_body(r);
+    if (!body) {
+        return ESP_OK;
+    }
+    cJSON *j = cJSON_Parse(body);
+    if (!cJSON_IsArray(j)) {
+        cJSON_Delete(j);
+        free(body);
+        return send_err(r, 400, "expected a JSON array of slots");
+    }
+    cJSON_Delete(j);
+    bool ok = app_config_write_file(CFG_MOUNT "/plant_slots.json", body, strlen(body));
+    free(body);
+    return ok ? send_json(r, "{\"ok\": true}") : send_err(r, 500, "could not save the slots");
+}
+
 static esp_err_t h_points_put(httpd_req_t *r)
 {
     char *body = read_body(r);
@@ -2611,6 +2647,8 @@ static const httpd_uri_t routes[] = {
     { "/api/plant",       HTTP_GET,  h_plant_get,    NULL },
     { "/api/plant",       HTTP_PUT,  h_plant_put,    NULL },
     { "/api/plant/svg",   HTTP_PUT,  h_plant_svg_put, NULL },
+    { "/api/plant/live",  HTTP_PUT,  h_plant_live_put, NULL },
+    { "/api/plant/slots", HTTP_PUT,  h_plant_slots_put, NULL },
     { "/api/read",        HTTP_GET,  h_read,         NULL },
     { "/api/write",       HTTP_POST, h_write,        NULL },
     { "/api/grid",        HTTP_POST, h_grid,         NULL },

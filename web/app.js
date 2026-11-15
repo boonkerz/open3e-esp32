@@ -2908,8 +2908,8 @@ function renderPlant() {
   plantLiveLoop();
 }
 
-function plantActiveSlots() {
-  const p = plantProfile;
+function plantActiveSlots(profile) {
+  const p = profile || plantProfile;
   if (!p || !p.outdoor) return [];
   const parts = plantParts(p);
   return plantSlots(p).filter((s) => parts[s.part] && p.roles[s.role]
@@ -3017,13 +3017,53 @@ function plantBackgroundSvg(p) {
   return new XMLSerializer().serializeToString(svg);
 }
 
+/* The same picture with {{id}} where the values go, and the list of what
+   belongs there: the firmware fills it every minute and publishes it, so a
+   dashboard that can only show an image (Grafana, a wall display) gets the
+   values too. Built from the same drawing as everything else. */
+function plantLiveTemplate(p) {
+  const svg = buildPlantSvg(p);
+  const parts = plantParts(p);
+  for (const n of svg.querySelectorAll("[data-part]")) {
+    if (!parts[n.dataset.part]) n.remove();
+  }
+  for (const t of svg.querySelectorAll("text.val")) {
+    t.textContent = `{{${t.id.replace(/^pv-/, "")}}}`;
+  }
+  svg.prepend(sv("rect", { width: 1000, height: 420, fill: "#0b1020" }));
+  const style = sv("style", {});
+  style.textContent =
+    "text{font:13px Arial,Helvetica,sans-serif;fill:#e6edf3}text.val{font-weight:600}"
+    + "text.lbl{font-size:11px;fill:#9198a1}.sym{fill:none;stroke:#e6edf3;stroke-width:2}"
+    + ".pipe{fill:none;stroke-width:4;stroke-linecap:round;stroke-linejoin:round;"
+    + "stroke-dasharray:12 10;animation:f 1.2s linear infinite}@keyframes f{to{stroke-dashoffset:-22}}"
+    + ".hi{stroke:#f97316}.lo{stroke:#38bdf8}.flow{stroke:#ef4444}.ret{stroke:#60a5fa}";
+  svg.prepend(style);
+  return new XMLSerializer().serializeToString(svg);
+}
+function plantLiveSlots(p) {
+  return plantActiveSlots(p).map((s) => ({
+    id: s.id, ecu: p.roles[s.role].addr, did: s.did,
+    ...(s.f ? { f: s.f } : {}), unit: s.unit || "",
+    ...(s.d !== undefined ? { d: s.d } : {}),
+    ...(s.scale ? { scale: s.scale } : {}),
+    ...(s.map ? { map: s.map } : {}),
+  }));
+}
+
+async function plantPut(path, body) {
+  const r = await fetch(path, { method: "PUT", body });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+}
+
 async function plantHaCard(btn) {
   const p = plantProfile;
   if (!p || !p.outdoor) return;
   btn.disabled = true;
   try {
-    await fetch("/api/plant/svg", { method: "PUT", body: plantBackgroundSvg(p) })
-      .then(async (r) => { if (!r.ok) throw new Error((await r.json()).error || `HTTP ${r.status}`); });
+    await plantPut("/api/plant/svg", plantBackgroundSvg(p));
+    await plantPut("/api/plant/live", plantLiveTemplate(p));
+    await plantPut("/api/plant/slots", JSON.stringify(plantLiveSlots(p)));
     /* Positions come from the drawn picture itself, so card and picture never
        drift apart; percentages because the card scales with the dashboard. */
     const svg = buildPlantSvg(p);
@@ -3036,7 +3076,8 @@ async function plantHaCard(btn) {
     const lines = ["type: picture-elements"];
     if (mqttOn) {
       lines.push(`image_entity: image.${slug(base)}_anlagenschema`,
-                 `# Alternativ ohne MQTT-Bild: image: /local/plant.svg (Datei aus „SVG herunterladen“ nach config/www)`);
+                 `# Alternativ ohne MQTT-Bild: image: /local/plant.svg (Datei aus „SVG herunterladen“ nach config/www)`,
+                 `# Fertiges Bild mit Werten (Grafana u. a.): MQTT-Topic ${base}/plant/live, retained, image/svg+xml, jede Minute`);
     } else {
       lines.push(`image: /local/plant.svg`,
                  `# Datei aus „SVG herunterladen“ nach config/www kopieren; nur im LAN geht auch http://${location.host}/plant.svg`);
@@ -3063,7 +3104,7 @@ async function plantHaCard(btn) {
     ta.value = lines.join("\n");
     ta.hidden = false;
     $("plant-ha-copy").hidden = false;
-    $("plant-ha-msg").textContent = `Bild gespeichert${mqttOn ? " und per MQTT veröffentlicht" : ""}, ${plantActiveSlots().length} Werte in der Karte.`;
+    $("plant-ha-msg").textContent = `Bild gespeichert${mqttOn ? ` und per MQTT veröffentlicht; das Bild mit Werten folgt jede Minute auf ${base}/plant/live` : ""}, ${plantActiveSlots().length} Werte in der Karte.`;
   } catch (e) {
     $("plant-ha-msg").textContent = e.message;
   } finally {
