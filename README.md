@@ -475,9 +475,16 @@ Umschaltventil und Zirkulationspumpe kommen daraus ins Bild.
 
 **Noch offen.** DID 952 `HydraulicMatrix` (51 Byte, drei Zeilen zu 17) und
 1549 `HydraulicMatrixConfiguration` (97 Byte) sind der eigentliche
-Hydraulikplan, aber mit einer einzigen Anlage nicht zu knacken: auf der 252-A
-stehen in 952 die Paare `01 08` und `01 05` plus `01 01`, in 1549 `01 22`,
-`01 11 20` und `01 03 03`, der Rest ist null. Das Profil zeigt beide roh. Wer eine anders konfigurierte Anlage hat
+Hydraulikplan. Zwei Anlagen liegen vor (252-A A06 mit direktem Kreis und
+integriertem Speicher; 150-A A13 mit Trennpuffer, gemischtem Kreis 2 und
+Frischwasserstation, aus Diskussion #22): in 952 ist die erste Zeile bei
+beiden `01 08`, die zweite beginnt mit `01 05` beziehungsweise `01 01` und
+trägt dahinter unterschiedliche Bytes; in 1549 haben beide dasselbe Gerüst
+(Byte 33 `01` plus Code, Byte 46 `01 1x 20`, ab Byte 51 eine Zählung mit
+Einträgen: einmal `01 03 03`, einmal `04 03 00 09 00 09 00 09`), die Anlage
+mit Puffer zusätzlich `02 00 01 07` am Anfang. Zum Festnageln fehlen weitere
+Konfigurationen, etwa 250-A ohne Puffer mit zwei Kreisen oder eine Vitodens.
+Das Profil zeigt beide roh. Wer eine anders konfigurierte Anlage hat
 (Puffer, mehrere Heizkreise, Kühlung, Monoblock): eine Sicherung mit Scan und
 Sondierung als Issue hilft, die Matrix über mehrere Anlagen zu vergleichen und
 die Modelltabelle (Herstellnummer → Modell) zu füllen.

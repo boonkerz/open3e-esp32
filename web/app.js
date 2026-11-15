@@ -2405,6 +2405,9 @@ const plantSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MODEL_TABLE = {
   "7994220": { family: "Vitocal 252-A", unit: "Innengerät AWOT-E-AC 251.A16" },
   "7994308": { family: "Vitocal 25x-A", unit: "Außeneinheit A06, 230 V" },
+  /* lingej, open3e-esp32 discussion #22 */
+  "7974983": { family: "Vitocal 150-A", unit: "Innengerät AWMIW.A1.19" },
+  "7988252": { family: "Vitocal 150-A", unit: "Außeneinheit AWMOF-151.A1.13, 400 V" },
 };
 
 /* Datapoints the probe reads, by controller role. Only those the scan lists
@@ -2484,6 +2487,23 @@ function derivePlant() {
   const fitted = (role, did) => plantFitted(role, did);
   const probed = !!plant.reads;
 
+  /* DID 1238 AvailableActorSensorComponents: a count, then that many
+     little-endian 16-bit datapoint numbers, one per actuator the controller
+     drives: pump, diverter valve, fans, expansion valves, circulation pump,
+     crankcase heater, mixer pumps and valves. Confirmed on a 252-A and a
+     150-A, where every entry matched a datapoint the scan had found. */
+  const actors = [];
+  const raw1238 = plantVal("indoor", 1238);
+  if (typeof raw1238 === "string" && raw1238.length >= 2) {
+    const n = parseInt(raw1238.slice(0, 2), 16);
+    for (let i = 0; i < n && 6 + 4 * i <= raw1238.length; i++) {
+      const lo = parseInt(raw1238.slice(2 + 4 * i, 4 + 4 * i), 16);
+      const hi = parseInt(raw1238.slice(4 + 4 * i, 6 + 4 * i), 16);
+      const did = lo + 256 * hi;
+      if (did) actors.push(did);
+    }
+  }
+
   const circuits = [];
   for (let i = 0; i < 4; i++) {
     const flowDid = 284 + 2 * i;
@@ -2497,27 +2517,15 @@ function derivePlant() {
         name: typeof name === "string" ? name.trim() : "",
         type: prop && prop.MixerCircuitType ? prop.MixerCircuitType.Text : "",
         mode: op && op.Mode ? op.Mode.Text : "",
+        /* Its own pump (401..404) means a separating buffer or a mixed
+           circuit; the mixing valve (475..478) says which. Both from 1238. */
+        pump: actors.includes(401 + i),
+        mixer: actors.includes(475 + i),
       });
     }
   }
   const heaterPower = plantVal("indoor", 2574);
   const fan2 = plantVal("outdoor", 1776);
-  /* DID 1238 AvailableActorSensorComponents: a count, then that many
-     little-endian 16-bit datapoint numbers, one per actuator the controller
-     drives: pump, diverter valve, fans, expansion valves, circulation pump,
-     crankcase heater. Decoded from a 252-A where every entry matched a
-     datapoint the scan had found. */
-  const actors = [];
-  const raw1238 = plantVal("indoor", 1238);
-  if (typeof raw1238 === "string" && raw1238.length >= 2) {
-    const n = parseInt(raw1238.slice(0, 2), 16);
-    for (let i = 0; i < n && 6 + 4 * i <= raw1238.length; i++) {
-      const lo = parseInt(raw1238.slice(2 + 4 * i, 4 + 4 * i), 16);
-      const hi = parseInt(raw1238.slice(4 + 4 * i, 6 + 4 * i), 16);
-      const did = lo + 256 * hi;
-      if (did) actors.push(did);
-    }
-  }
   const dhwLayers = [3234, 3233, 3232].filter((d) => fitted("indoor", d));
   return {
     roles, probed,
@@ -2845,11 +2853,16 @@ function renderPlant() {
   kv("Warmwasserspeicher", yesno(p.dhw));
   kv("Pufferspeicher", p.buffer.length ? `ja (DID ${p.buffer.join(", ")})` : "nein");
   const CIRCUIT_DE = {
-    UnderFloorCentralHeating: "Fußbodenheizung", RadiatorCentralHeating: "Heizkörper",
-    Unmixed: "ungemischt", Mixed: "gemischt",
+    NormalCentralHeating: "Heizung", UnderFloorCentralHeating: "Fußbodenheizung",
+    SwimmingPool: "Schwimmbad", Baseboard: "Sockelheizung", Radiator: "Heizkörper",
+    RadiantUnderfloorHeating: "Flächenheizung", Snowmelt: "Schneeschmelze",
+    AirHandler: "Lüftungsgerät", FanCoil: "Gebläsekonvektor",
   };
   kv("Heizkreise", p.circuits.length
-     ? p.circuits.map((c) => `${c.name || c.n}${c.type ? " (" + (CIRCUIT_DE[c.type] || c.type) + ")" : ""}`).join(", ")
+     ? p.circuits.map((c) => {
+         const bits = [CIRCUIT_DE[c.type] || c.type, c.mixer ? "gemischt" : "", c.pump ? "eigene Pumpe" : ""].filter(Boolean);
+         return `${c.name || c.n}${bits.length ? " (" + bits.join(", ") + ")" : ""}`;
+       }).join(", ")
      : "keiner");
   kv("Heizstab", p.heater ? (p.heaterW ? `${fmtDe(p.heaterW / 1000, 1)} kW` : "ja") : "nein");
   kv("Solar", yesno(p.solar));
@@ -2859,6 +2872,9 @@ function renderPlant() {
     381: "Heizkreispumpe", 1842: "Umschaltventil", 1774: "Kurbelwannenheizung",
     1775: "Lüfter 1", 1776: "Lüfter 2", 388: "Expansionsventil 1", 390: "Expansionsventil 2",
     491: "Zirkulationspumpe", 386: "Umschaltventil", 1044: "Sekundärpumpe",
+    401: "Pumpe Heizkreis 1", 402: "Pumpe Heizkreis 2", 403: "Pumpe Heizkreis 3", 404: "Pumpe Heizkreis 4",
+    475: "Mischer Heizkreis 1", 476: "Mischer Heizkreis 2", 477: "Mischer Heizkreis 3", 478: "Mischer Heizkreis 4",
+    354: "Verdampfer-Bodenheizung", 2852: "Luftkanalheizung",
   };
   if (p.actors.length) {
     kv("Aktoren (DID 1238)", p.actors.map((d) => ACTOR_DE[d] || didNames[d] || `DID ${d}`).join(", "));
