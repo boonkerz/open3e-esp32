@@ -177,8 +177,13 @@ static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *da
         if (!sta_should_connect) {
             return;   /* setup mode: the station interface is only for scanning */
         }
+        wifi_event_sta_disconnected_t *d = data;
+        ESP_LOGW(TAG, "disconnected from " MACSTR " (reason %u, rssi %d)",
+                 MAC2STR(d->bssid), d->reason, d->rssi);
         status.state = NET_STA_CONNECTING;
         status.ip[0] = '\0';
+        status.bssid[0] = '\0';
+        status.channel = 0;
         status.retries++;
         /* The tunnel's endpoint is no longer reachable; the task parks until
          * the next address arrives instead of hammering the handshake. */
@@ -187,6 +192,13 @@ static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *da
          * AP is needed. Backing off a little avoids hammering a busy router. */
         vTaskDelay(pdMS_TO_TICKS(status.retries > NET_STA_RETRIES ? 5000 : 1000));
         esp_wifi_connect();
+    } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_CONNECTED) {
+        /* With several access points sharing one SSID (mesh, repeaters) this
+         * is the only way to tell which one was actually chosen. */
+        wifi_event_sta_connected_t *c = data;
+        snprintf(status.bssid, sizeof(status.bssid), MACSTR, MAC2STR(c->bssid));
+        status.channel = c->channel;
+        ESP_LOGI(TAG, "associated with %s on channel %u", status.bssid, c->channel);
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *e = data;
         snprintf(status.ip, sizeof(status.ip), IPSTR, IP2STR(&e->ip_info.ip));
@@ -315,6 +327,13 @@ static void start_sta(const wifi_cfg_t *cfg)
     copy_field(wc.sta.ssid, sizeof(wc.sta.ssid), cfg->ssid);
     copy_field(wc.sta.password, sizeof(wc.sta.password), cfg->pass);
     wc.sta.threshold.authmode = WIFI_AUTH_OPEN;
+    /* Scan every channel and join the strongest access point that carries the
+     * SSID. The zero-initialised default is WIFI_FAST_SCAN, which takes the
+     * first match in channel order -- with a mesh or a repeater that can be a
+     * distant node barely audible through a metal cabinet, and every retry
+     * repeats the same choice. */
+    wc.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
+    wc.sta.sort_method = WIFI_CONNECT_AP_BY_SIGNAL;
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wc));

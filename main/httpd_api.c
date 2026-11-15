@@ -297,6 +297,10 @@ static esp_err_t h_status(httpd_req_t *r)
     o3e_buf_add_json_str(&b, net.ip);
     o3e_buf_adds(&b, ", \"apSsid\": ");
     o3e_buf_add_json_str(&b, net.ap_ssid);
+    o3e_buf_adds(&b, ", \"bssid\": ");
+    o3e_buf_add_json_str(&b, net.bssid);
+    snprintf(t, sizeof(t), ", \"channel\": %u", net.channel);
+    o3e_buf_adds(&b, t);
     o3e_buf_adds(&b, "}, ");
 
     /* busErrors is the driver's total and includes lost arbitration and the
