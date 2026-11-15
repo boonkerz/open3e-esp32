@@ -34,6 +34,8 @@ typedef struct {
     char        ap_ssid[33];
     int8_t      rssi;
     uint8_t     retries;
+    char        bssid[18];   /* access point the station is joined to */
+    uint8_t     channel;
 } net_status_t;
 
 /* Brings up Wi-Fi in whichever mode the stored configuration implies. */
