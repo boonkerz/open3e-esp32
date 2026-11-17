@@ -472,7 +472,7 @@ Bus](#schreiben-auf-den-bus).
 
 Das Gerät kann seine Netzanbindung durch einen WireGuard-Tunnel führen. Damit
 ist die **komplette Fernwartung** möglich: Weboberfläche, Firmware-Update über
-*Debug → Firmware-Update* und MQTT laufen dann von der Gegenseite aus, ohne
+*Einstellungen → Wartung* und MQTT laufen dann von der Gegenseite aus, ohne
 dass Portfreigaben am Router nötig wären. Eingerichtet wird das unter
 *Einstellungen → Anbindung → WireGuard*.
 
@@ -1242,7 +1242,12 @@ Entitäten ohne Datenquelle stehen.
 
 ## Firmware-Update über die Weboberfläche
 
-Unter *Debug → Firmware-Update* lässt sich `build/open3e-gateway.bin` hochladen.
+Unter *Einstellungen → Wartung* gibt es drei Karten: **1** nur die
+Weboberfläche, **2** nur die Datenpunktdatenbank (`storage.bin`, löscht
+Auswahl und Scan, vorher sichern), **3** die Anwendung. Für eine neue Version
+zählt Karte 3: Datei `open3e-gateway.bin` wählen, *Hochladen und neu starten*.
+Die Dateien kommen von der Flash-Seite oder aus einem Release; wer selbst
+baut, nimmt `build/open3e-gateway.bin`.
 
 Das Gerät hängt im Heizungsraum, deshalb zwei Absicherungen:
 

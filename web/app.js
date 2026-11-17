@@ -1571,7 +1571,7 @@ function markUnsupported(cardId, present, what) {
     note.className = "warnbox cap-note";
     note.innerHTML = `<b>Diese Firmware kennt ${what} nicht.</b> Die Felder unten
       sind deshalb gesperrt — eingetragene Werte würden beim Speichern
-      stillschweigend verworfen. Unter <i>Debug → Firmware-Update</i>
+      stillschweigend verworfen. Unter <i>Einstellungen → Wartung</i>
       aktualisieren.`;
     card.insertBefore(note, card.querySelector("h2").nextSibling);
   }
