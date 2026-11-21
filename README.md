@@ -79,7 +79,10 @@ open3e erwartet — die Bus-Diagnose unten sagt, ob am angeschlossenen Strang
 > sich nach einer Inbetriebnahme mit laufendem open3e am internen Bus die
 > Außeneinheit nicht mehr an, und das Bedienfeld verlangte das Service-Tool.
 > Ob die Abfragen die Ursache waren, ist nicht geklärt; am internen Bus ist
-> das Risiko am größten, abziehen kostet nichts.
+> das Risiko am größten, abziehen kostet nichts. Die Firmware hält zusätzlich
+> von selbst an, wenn sie solchen Verkehr sieht (siehe
+> [Fremde Diagnose auf dem Bus](#fremde-diagnose-auf-dem-bus)); das ist ein
+> Netz darunter und kein Ersatz.
 
 ### Läuft der Build, den ich gerade gebaut habe?
 
@@ -242,6 +245,45 @@ Anlage gelegentlich länger braucht.
 **Wichtig:** Es darf immer nur *ein* Master am Bus sein. Läuft parallel noch ein
 open3e auf einem Raspberry Pi, stören sich die beiden ISO-TP-Sitzungen
 gegenseitig. Zum Vergleichen abwechselnd betreiben, nie gleichzeitig.
+
+### Fremde Diagnose auf dem Bus
+
+Die CAN-ID einer Anfrage nennt das angesprochene Steuergerät, nicht den
+Absender. Für ein Steuergerät sind das Gateway und die Regelung der Anlage
+deshalb derselbe Tester, und eine eigene Absenderadresse, die das trennen
+würde, gibt es in diesem Adressschema nicht. Im Normalbetrieb ist das egal:
+an einer Vitocal lief am externen Bus in neunzig Sekunden kein einziges
+fremdes Frame im Diagnosebereich. Bei Inbetriebnahme und Software-Update
+spricht die Regelung aber selbst mit den Steuergeräten und überträgt ihnen
+Daten.
+
+Das Gateway hört deshalb im Bereich `0x680` bis `0x6FF` mit und unterscheidet
+zwei Fälle:
+
+| Gesehen | Reaktion |
+|---|---|
+| Sitzungswechsel (`0x10`, außer Standardsitzung), Reset (`0x11`), Routine (`0x31`), Download und Übertragung (`0x34` bis `0x37`), jeweils Anfrage, Antwort oder Ablehnung | Es wird **nichts mehr gesendet**, bis der Bus zehn Minuten frei davon war. Jedes weitere solche Frame verlängert die Pause. |
+| Jede andere fremde Anfrage oder Antwort | Die nächste eigene Anfrage wartet eine Lücke von 150 ms ab, höchstens 1,5 s. |
+
+Die Pause gilt für alles, was das Gerät sendet: zyklische Abfragen, Scan,
+Lesen und Schreiben aus Weboberfläche, API und MQTT, Netzladen und
+Speichermodus. Ein Scan wartet und läuft danach weiter; ein Halt endet nach
+den üblichen Fehlversuchen von selbst, und der Energiemanager hat den
+Sollwert zurück. Ein einzelner Lese- oder Schreibbefehl bekommt die Antwort
+`paused: another device is programming a control unit`.
+
+Auf der Statusseite steht der Zustand in der Bus-Karte unter „Fremde
+Diagnose", mit Dienst und CAN-ID des auslösenden Frames und einem Knopf
+„Jetzt fortsetzen" für den, der weiß, dass die Inbetriebnahme vorbei ist
+(`POST /api/guard/release`). `/api/status` führt dasselbe unter `guard`.
+Abschalten lässt es sich unter *Einstellungen → Bus → Passiver Empfang*;
+das ist für den Fall gedacht, dass eine Anlage solche Dienste im
+Normalbetrieb benutzt und das Gateway sonst dauernd schweigt.
+
+**Grenzen.** Das erste fremde Frame sieht das Gateway erst, wenn es auf dem
+Bus ist; eine eigene Anfrage kann genau damit zusammenfallen. Und es sieht
+nur den Strang, an dem es hängt. Vor Inbetriebnahme und Update den Stecker
+zu ziehen bleibt deshalb der sichere Weg.
 
 ---
 

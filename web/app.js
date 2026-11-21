@@ -60,6 +60,38 @@ function waitForRestart(msgEl, done, trial = false) {
   tick();
 }
 
+/* The gateway keeps quiet while another device programs a control unit
+   (commissioning, software update). Say so where the bus state is shown, with
+   the frame that caused it, and offer the way out for somebody who knows the
+   run is over. */
+function renderGuard(g) {
+  const out = $("s-guard");
+  if (!out) return;
+  out.replaceChildren();
+  out.style.color = "";
+  if (!g) { out.textContent = "–"; return; }
+  const hex = (v, n) => "0x" + v.toString(16).toUpperCase().padStart(n, "0");
+  if (g.active) {
+    const min = Math.ceil(g.remainingS / 60);
+    out.style.color = "var(--err)";
+    out.append(`Abfragen angehalten: Dienst ${hex(g.lastSid, 2)} auf ${hex(g.lastId, 3)}, ` +
+               `weiter in ${min} min `);
+    const b = el("button", { className: "btn sec small", textContent: "Jetzt fortsetzen" });
+    b.onclick = async () => {
+      try {
+        await api("/api/guard/release", { method: "POST" });
+        toast("Abfragen laufen wieder");
+      } catch (e) { toast(e.message, "err"); }
+    };
+    out.append(b);
+    return;
+  }
+  if (!g.enabled) { out.textContent = "wird nicht beachtet"; return; }
+  out.textContent = g.holds
+    ? `keine, ${g.holds}-mal angehalten (zuletzt Dienst ${hex(g.lastSid, 2)} auf ${hex(g.lastId, 3)})`
+    : g.foreign ? `keine Programmierung, ${g.foreign} fremde Anfragen` : "keine";
+}
+
 async function api(path, opts = {}) {
   if (opts.body) opts.headers = { "Content-Type": "application/json", ...opts.headers };
   const res = await fetch(path, opts);
@@ -320,6 +352,7 @@ function renderStatus(s) {
   const holderEl = $("s-holder");
   holderEl.textContent = s.can.holder ? `${s.can.holder} (${(held / 1000).toFixed(0)} s)` : "frei";
   holderEl.style.color = held > 20000 ? "var(--err)" : "";
+  renderGuard(s.guard);
 
   $("s-mqtt").textContent = s.mqtt.connected ? "verbunden" : "getrennt";
   $("s-pub").textContent = s.mqtt.published;
@@ -1684,6 +1717,9 @@ async function loadSettings() {
   $("sys-rawwrite").checked = s.system.rawWriteEnabled;
   $("sys-rawids").value = s.system.rawCanIds || "";
   $("sys-em380").checked = s.system.em380Enabled;
+  $("sys-guard").checked = s.system.busGuard !== false;
+  markFieldsUnsupported(["sys-guard"], "busGuard" in s.system, "guard-unsupported",
+                        "Das Anhalten bei fremder Diagnose kennt diese Firmware nicht.");
   $("co-on").checked = s.system.collectEnabled;
   $("co-id").value = s.system.collectCanIds || "0x451,0x441";
   $("sys-tz").value = s.system.tz;
@@ -1783,6 +1819,9 @@ async function saveSettings() {
         rawCanIds: $("sys-rawids").value,
       }),
       em380Enabled: $("sys-em380").checked,
+      ...(CAPS["guard-unsupported"] === false ? {} : {
+        busGuard: $("sys-guard").checked,
+      }),
       tz: $("sys-tz").value,
       ...(CAPS["card-timing"] === false ? {} : {
         canSamplePoint: Math.round((Number($("can-sp").value) || 0) * 10),

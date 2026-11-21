@@ -376,6 +376,7 @@ void sys_cfg_get(sys_cfg_t *out)
     out->write_enabled = nvs_get_u8_or(h, "wr_on", 0) != 0;
     out->raw_write_enabled = nvs_get_u8_or(h, "raw_wr_on", 0) != 0;
     out->em380_enabled = nvs_get_u8_or(h, "em380_on", 0) != 0;
+    out->bus_guard_off = nvs_get_u8_or(h, "guard_off", 0) != 0;
     out->collect_enabled = nvs_get_u8_or(h, "coll_on", 0) != 0;
     nvs_get_str_or(h, "coll_ids", out->collect_canids, sizeof(out->collect_canids),
                    "0x451,0x441");
@@ -428,6 +429,7 @@ bool sys_cfg_set(const sys_cfg_t *in)
     nvs_set_u8(h, "wr_on", in->write_enabled ? 1 : 0);
     nvs_set_u8(h, "raw_wr_on", in->raw_write_enabled ? 1 : 0);
     nvs_set_u8(h, "em380_on", in->em380_enabled ? 1 : 0);
+    nvs_set_u8(h, "guard_off", in->bus_guard_off ? 1 : 0);
     nvs_set_u8(h, "coll_on", in->collect_enabled ? 1 : 0);
     nvs_set_str(h, "coll_ids",
                 in->collect_canids[0] ? in->collect_canids : "0x451,0x441");

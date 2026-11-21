@@ -37,6 +37,8 @@ const char *uds_strerror(uds_result_t r)
     case UDS_ERR_SEND:      return "transport error: send failed";
     case UDS_ERR_MALFORMED: return "malformed response";
     case UDS_ERR_TOO_LONG:  return "response too long";
+    case UDS_ERR_GUARD:
+        return "paused: another device is programming a control unit";
     case UDS_ERR_NEGATIVE:
         snprintf(buf, sizeof(buf), "rejected (0x%02X %s)", r.nrc, uds_nrc_str(r.nrc));
         return buf;

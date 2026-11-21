@@ -51,6 +51,8 @@ typedef enum {
     UDS_ERR_NEGATIVE,     /* ECU answered 0x7F; see `nrc` */
     UDS_ERR_MALFORMED,
     UDS_ERR_TOO_LONG,
+    UDS_ERR_GUARD,        /* not sent: somebody else is programming a control
+                             unit, see bus_guard.h */
 } uds_err_t;
 
 typedef struct {

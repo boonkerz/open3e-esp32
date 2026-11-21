@@ -88,6 +88,7 @@
       <div class="kv"><div class="k">Fehlerstelle im Frame</div><div class="v" id="s-errseg">–</div></div>
       <div class="kv"><div class="k">Bus-Off-Recovery</div><div class="v" id="s-recov">–</div></div>
       <div class="kv"><div class="k">Bus belegt von</div><div class="v" id="s-holder">–</div></div>
+      <div class="kv"><div class="k">Fremde Diagnose</div><div class="v" id="s-guard">–</div></div>
       <div class="kv"><div class="k">Bit-Timing</div><div class="v" id="s-timing">–</div></div>
     </div>
     <p class="hint" style="margin:12px 0 0">250 kBit/s, TX GPIO15, RX GPIO16.
@@ -743,6 +744,12 @@
   </div>
   <div class="card">
     <h2>Passiver Empfang</h2>
+    <label class="small"><input type="checkbox" id="sys-guard"> Abfragen anhalten, wenn ein anderes Gerät Steuergeräte programmiert</label>
+    <p class="small muted" style="margin:-4px 0 12px" id="guard-note">Standardmäßig an. Bei
+      Inbetriebnahme und Software-Update überträgt die Regelung selbst Daten an
+      die Steuergeräte; eine Abfrage mittendrin kann das stören. Sieht das
+      Gerät solchen Verkehr, sendet es nichts mehr, bis der Bus zehn Minuten
+      frei davon war. Den Stecker vorher zu ziehen bleibt der sichere Weg.</p>
     <label class="small"><input type="checkbox" id="sys-em380"> E380-Energiezähler mitlesen (passiv)</label>
     <p class="small muted" style="margin:-4px 0 12px">Standardmäßig aus. Ohne
       angeschlossenen Zähler bringt es nichts und läuft nur im Empfangs-Interrupt mit.</p>

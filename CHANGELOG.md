@@ -89,6 +89,19 @@ bis dahin auf der Flash-Seite lag.
   aktuelle Betriebspunkt mit dem Sollwert der Anlage. Als SVG retained auf
   `<Basis>/curve/<n>`, Base64-codiert auf `<Basis>/curve/<n>/b64`, in Home
   Assistant per Discovery als Bild-Entität „Heizkennlinie <Kreis>".
+
+- **Abfragen halten an, wenn ein anderes Gerät Steuergeräte programmiert.**
+  Bei Inbetriebnahme und Software-Update überträgt die Regelung selbst per
+  UDS Daten an die Steuergeräte, auf denselben Adressen, die das Gateway
+  abfragt (Anlass: open3e/open3e #413). Sieht das Gerät im Bereich
+  `0x680`–`0x6FF` einen Sitzungswechsel, Reset, eine Routine oder einen
+  Download, sendet es nichts mehr, bis der Bus zehn Minuten frei davon war:
+  keine Abfragen, kein Scan, kein Lesen oder Schreiben, keine Halts. Nach
+  jeder anderen fremden Anfrage wartet es eine kurze Lücke ab. Zustand in
+  der Bus-Karte unter „Fremde Diagnose" und in `/api/status` unter `guard`,
+  von Hand fortsetzen mit dem Knopf dort oder `POST /api/guard/release`,
+  abschaltbar unter *Einstellungen → Bus*. Standardmäßig an. Den Stecker
+  vorher zu ziehen bleibt der sichere Weg.
 - **Favicon** für die Weboberfläche (#11, wunderbaum): zwei gegenläufige
   Leitungen mit Knoten in der Mitte, sein zweiter Vorschlag. Die Flash-Seite
   trägt dasselbe Symbol. Kommt mit dem nächsten `storage.bin`.

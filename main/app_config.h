@@ -101,6 +101,10 @@ typedef struct {
      * installations have no meter, and an unused listener is one more thing
      * running in the receive interrupt. */
     bool em380_enabled;
+    /* Stop asking while another device programs a control unit, see
+     * bus_guard.h. Stored as "off" so that a zeroed structure -- a factory
+     * reset, a device updated from a firmware without it -- has it on. */
+    bool bus_guard_off;
     /* Passive reception of a device's own broadcast channel ("collect"): the
      * Vitocharge VX3 announces its datapoints on 0x451, the Vitocal on 0x693.
      * Off by default; the identifier depends on the installation. */
