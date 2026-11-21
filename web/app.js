@@ -505,8 +505,9 @@ function renderScan(scan) {
   }
   $("scan-msg").textContent = msg;
 
-  /* Refresh the device and datapoint views once a scan finishes. */
-  if (scanning && !busy) loadSystem();
+  /* Refresh the device and datapoint views once a scan finishes, and probe
+     the plant again: a new scan may have found a different installation. */
+  if (scanning && !busy) loadSystem().then(() => probePlant()).catch(() => {});
   scanning = busy;
 }
 
@@ -660,29 +661,34 @@ function parseLabels(text) {
 /* "10..60", "..60", "10.." or "Comfort: 10..60" -> {"*": {min, max}} or by field.
    Two dots rather than a dash, so a negative bound stays readable. */
 function parseRange(text) {
-  const t = text.trim();
-  if (!t) return undefined;
-  let field = "*", body = t;
-  const colon = t.indexOf(":");
-  if (colon > 0) {
-    field = t.slice(0, colon).trim();
-    body = t.slice(colon + 1);
+  /* Several fields of one datapoint, each with its own limits:
+     "Gradient: 0.2..3.5; Level: -13..40". */
+  const parts = text.split(";").map((x) => x.trim()).filter(Boolean);
+  if (!parts.length) return undefined;
+  const out = {};
+  for (const t of parts) {
+    let field = "*", body = t;
+    const colon = t.indexOf(":");
+    if (colon > 0) {
+      field = t.slice(0, colon).trim();
+      body = t.slice(colon + 1);
+    }
+    const m = body.trim().match(/^(-?\d+(?:[.,]\d+)?)?\s*\.\.\s*(-?\d+(?:[.,]\d+)?)?$/);
+    if (!m || (m[1] === undefined && m[2] === undefined) || field === "") return undefined;
+    const r = {};
+    if (m[1] !== undefined) r.min = Number(m[1].replace(",", "."));
+    if (m[2] !== undefined) r.max = Number(m[2].replace(",", "."));
+    if (r.min !== undefined && r.max !== undefined && r.min > r.max) return undefined;
+    out[field] = r;
   }
-  const m = body.trim().match(/^(-?\d+(?:[.,]\d+)?)?\s*\.\.\s*(-?\d+(?:[.,]\d+)?)?$/);
-  if (!m || (m[1] === undefined && m[2] === undefined) || field === "") return undefined;
-  const r = {};
-  if (m[1] !== undefined) r.min = Number(m[1].replace(",", "."));
-  if (m[2] !== undefined) r.max = Number(m[2].replace(",", "."));
-  if (r.min !== undefined && r.max !== undefined && r.min > r.max) return undefined;
-  return { [field]: r };
+  return out;
 }
 function formatRange(range) {
   if (!range) return "";
-  const field = Object.keys(range)[0];
-  if (!field) return "";
-  const r = range[field] || {};
-  const body = `${r.min ?? ""}..${r.max ?? ""}`;
-  return field === "*" ? body : `${field}: ${body}`;
+  return Object.entries(range).map(([field, r]) => {
+    const body = `${(r || {}).min ?? ""}..${(r || {}).max ?? ""}`;
+    return field === "*" ? body : `${field}: ${body}`;
+  }).join("; ");
 }
 function formatLabels(labels) {
   if (!labels) return "";
@@ -1835,8 +1841,38 @@ function initApp() {
       document.querySelectorAll("main > section").forEach((x) => x.classList.remove("active"));
       b.classList.add("active");
       $(`tab-${b.dataset.tab}`).classList.add("active");
+      if (b.dataset.tab === "plant") onPlantShown();
     };
   }
+  $("plant-probe").onclick = () => probePlant();
+  $("plant-ha-points").onclick = (e) => plantHaPoints(e.currentTarget);
+  $("plant-ctl-add").onclick = (e) => plantCtlAdd(e.currentTarget);
+  $("plant-ha-card").onclick = (e) => plantHaCard(e.currentTarget);
+  /* navigator.clipboard exists only on https or localhost; the gateway is
+     plain http on the LAN, so the old selection-based copy is the real path. */
+  $("plant-ha-copy").onclick = () => {
+    const ta = $("plant-ha-yaml");
+    ta.focus();
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch { ok = false; }
+    if (ok) {
+      toast("YAML kopiert.", "ok");
+    } else if (navigator.clipboard) {
+      navigator.clipboard.writeText(ta.value).then(() => toast("YAML kopiert.", "ok"),
+                                                   () => toast("Bitte markierten Text manuell kopieren.", "err"));
+    } else {
+      toast("Bitte markierten Text manuell kopieren (Strg+C).", "err");
+    }
+  };
+  $("plant-ha-download").onclick = () => {
+    if (!plantProfile || !plantProfile.outdoor) return;
+    const blob = new Blob([plantBackgroundSvg(plantProfile)], { type: "image/svg+xml" });
+    const a = el("a", { href: URL.createObjectURL(blob), download: "plant.svg" });
+    document.body.append(a);
+    a.click();
+    a.remove();
+  };
 
   /* Unterteilung der Einstellungen. Der zuletzt geöffnete Bereich wird
      gemerkt: wer an MQTT arbeitet, landet nach jedem Neuladen sonst wieder
@@ -2354,7 +2390,7 @@ function initApp() {
     } catch (e) { toast(e.message, "err"); }
   };
 
-  loadNames().then(loadPoints).then(loadSystem).then(loadMeter).then(loadCollect);
+  loadNames().then(loadPoints).then(loadSystem).then(loadPlant).then(loadMeter).then(loadCollect);
   loadCrash();
   loadSysinfo();
   loadSettings().catch(() => {});
@@ -2381,6 +2417,872 @@ async function loadCrash() {
     line("Ursache", `${d.cause}, Adresse ${d.vaddr}`),
     line("Build", d.elfSha),
     line("Rückverfolgung", (d.bt || []).join(" ") + (d.corrupted ? "  (unvollständig)" : "")));
+}
+
+/* ------------------------------------------------------------------ */
+/* Plant: what is behind the bus, and a picture of it                  */
+/*
+ * The scan says which controllers exist and which datapoints each of them
+ * answers; it does not say which parts are fitted. A heat pump answers the
+ * buffer-tank sensors whether or not there is a buffer, with SensorStatus
+ * "not_available" and -3276.8 as the value. So a one-time probe reads the
+ * datapoints that tell installations apart (sensor status, configuration),
+ * the device stores the raw answers (/api/plant), and the rules that turn
+ * them into a profile and a drawing live here, where they can be improved
+ * without a firmware update. The bus carries no model name: DID 377 and
+ * 2829 are the serial number, so the model is a table keyed by its first
+ * seven digits (the Viessmann material number) with the nominal capacity
+ * from DID 2342 as the fallback.
+ */
+
+let plant = {};            /* the stored probe: {at, roles, reads} */
+let plantProfile = null;
+let plantBusy = false;
+let plantGen = 0;
+let plantRunning = false;
+const plantLive = {};      /* slot id -> last value shown */
+
+const plantSleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* Material-number prefix (first seven digits of the serial) -> what it is.
+   The bus never says; the numbers appear in Viessmann's spare-part lists
+   next to the type designation, which is where these come from. An unknown
+   prefix falls back to "Vitocal, n kW" from the nominal capacity. */
+const MODEL_TABLE = {
+  "7994220": { family: "Vitocal 252-A", unit: "Innengerät AWOT-E-AC 251.A16" },
+  "7994308": { family: "Vitocal 25x-A", unit: "Außeneinheit A06, 230 V" },
+  /* lingej, open3e-esp32 discussion #22 */
+  "7974983": { family: "Vitocal 150-A", unit: "Innengerät AWMIW.A1.19" },
+  "7988252": { family: "Vitocal 150-A", unit: "Außeneinheit AWMOF-151.A1.13, 400 V" },
+};
+
+/* Datapoints the probe reads, by controller role. Only those the scan lists
+   for that controller are requested, so a missing part costs no round trip. */
+const PLANT_PROBE = [
+  /* indoor: hydraulics, tanks, circuits, electric heater, identification */
+  ...[274, 268, 269, 271, 3232, 3233, 3234, 277, 278, 279, 281, 3016, 3017, 3018,
+      284, 286, 288, 290, 1415, 1416, 1417, 1418, 933, 934, 935, 936, 627, 628, 629, 630,
+      318, 376, 273, 275, 381, 386, 491, 1044,
+      2574, 2340, 2352, 2487, 2342, 2611, 2498, 2850, 2486, 2494,
+      952, 1549, 1238, 1660, 377].map((did) => ({ role: "indoor", did })),
+  /* outdoor: refrigerant circuit */
+  ...[2346, 2569, 2568, 2570, 2342, 321, 322, 324, 325, 1772, 2334, 2333, 320, 355,
+      388, 389, 390, 391, 1773, 1775, 1776, 374, 2884, 2885, 377]
+      .map((did) => ({ role: "outdoor", did })),
+];
+
+/* Which controller plays which part. The outdoor unit is whoever reports the
+   compressor; on a split system that is the VCMU, on a monoblock the master
+   itself. The indoor master is the HPMU (heat pump) or HMU (boiler); without
+   a compressor anywhere there is no heat pump to draw. */
+function plantRoles() {
+  const roles = {};
+  const hasDid = (d, did) => d.dids.some((x) => x[0] === did);
+  const devs = system.devices || [];
+  roles.outdoor = devs.find((d) => d.prop === "VCMU" && hasDid(d, 2346))
+               || devs.find((d) => hasDid(d, 2346) || hasDid(d, 2569));
+  roles.indoor = devs.find((d) => d.prop === "HPMUMASTER")
+              || devs.find((d) => d.prop === "HMUMASTER")
+              || devs.find((d) => hasDid(d, 268) && hasDid(d, 271));
+  roles.heater = devs.find((d) => d.prop === "EHCU");
+  roles.battery = devs.find((d) => d.prop === "EMCUMASTER" || d.prop === "EMCUSLAVE");
+  return roles;
+}
+
+function plantHas(roles, role, did) {
+  const d = roles[role];
+  return !!d && d.dids.some((x) => x[0] === did);
+}
+function plantVal(role, did) {
+  const v = plant.reads ? plant.reads[`${role}:${did}`] : undefined;
+  return (v && typeof v === "object" && "error" in v) ? undefined : v;
+}
+/* A sensor that is wired answers status 0; "not_available" (4) is the
+   controller's own way of saying the terminal is empty. A datapoint without
+   a status field counts as fitted when it answered at all. */
+function plantFitted(role, did) {
+  const v = plantVal(role, did);
+  if (v === undefined) return false;
+  if (v && typeof v === "object" && v.SensorStatus) return v.SensorStatus.ID === 0;
+  return true;
+}
+
+function plantModel(roles) {
+  const pin = String(plantVal("indoor", 377) || "").slice(0, 7);
+  const pout = String(plantVal("outdoor", 377) || "").slice(0, 7);
+  const kw = plantVal("indoor", 2342) || plantVal("outdoor", 2342);
+  const i = MODEL_TABLE[pin];
+  const o = MODEL_TABLE[pout];
+  /* The indoor unit names the family (252-A has the tank built in, 250-A
+     not); the outdoor unit names the size. */
+  let name = (i && i.family) || (o && o.family) || (roles.outdoor ? "Vitocal" : "Wärmeerzeuger");
+  if (!i && kw) name += `, ${fmtDe(kw / 1000, 0)} kW`;
+  const parts = [i && i.unit, o && o.unit].filter(Boolean);
+  if (parts.length) name += ` (${parts.join("; ")})`;
+  return name;
+}
+
+function fmtDe(v, digits) {
+  return Number(v).toFixed(digits).replace(".", ",");
+}
+
+function derivePlant() {
+  const roles = plantRoles();
+  if (!roles.indoor && !roles.outdoor) return null;
+  const has = (role, did) => plantHas(roles, role, did);
+  const fitted = (role, did) => plantFitted(role, did);
+  const probed = !!plant.reads;
+
+  /* DID 1238 AvailableActorSensorComponents: a count, then that many
+     little-endian 16-bit datapoint numbers, one per actuator the controller
+     drives: pump, diverter valve, fans, expansion valves, circulation pump,
+     crankcase heater, mixer pumps and valves. Confirmed on a 252-A and a
+     150-A, where every entry matched a datapoint the scan had found. */
+  const actors = [];
+  const raw1238 = plantVal("indoor", 1238);
+  if (typeof raw1238 === "string" && raw1238.length >= 2) {
+    const n = parseInt(raw1238.slice(0, 2), 16);
+    for (let i = 0; i < n && 6 + 4 * i <= raw1238.length; i++) {
+      const lo = parseInt(raw1238.slice(2 + 4 * i, 4 + 4 * i), 16);
+      const hi = parseInt(raw1238.slice(4 + 4 * i, 6 + 4 * i), 16);
+      const did = lo + 256 * hi;
+      if (did) actors.push(did);
+    }
+  }
+
+  const circuits = [];
+  for (let i = 0; i < 4; i++) {
+    const flowDid = 284 + 2 * i;
+    const op = plantVal("indoor", 1415 + i);
+    const prop = plantVal("indoor", 933 + i);
+    const on = fitted("indoor", flowDid) || (op && op.Mode && op.Mode.ID !== 0);
+    if (on) {
+      const name = plantVal("indoor", 627 + i);
+      circuits.push({
+        n: i + 1, flowDid,
+        name: typeof name === "string" ? name.trim() : "",
+        type: prop && prop.MixerCircuitType ? prop.MixerCircuitType.Text : "",
+        mode: op && op.Mode ? op.Mode.Text : "",
+        /* Its own pump (401..404) means a separating buffer or a mixed
+           circuit; the mixing valve (475..478) says which. Both from 1238. */
+        pump: actors.includes(401 + i),
+        mixer: actors.includes(475 + i),
+      });
+    }
+  }
+  const heaterPower = plantVal("indoor", 2574);
+  const fan2 = plantVal("outdoor", 1776);
+  const dhwLayers = [3234, 3233, 3232].filter((d) => fitted("indoor", d));
+  return {
+    roles, probed,
+    model: plantModel(roles),
+    nominalW: plantVal("indoor", 2342) || plantVal("outdoor", 2342) || 0,
+    serialIndoor: plantVal("indoor", 377) || "",
+    serialOutdoor: plantVal("outdoor", 377) || "",
+    outdoor: !!roles.outdoor,
+    fans: (has("outdoor", 1775) ? 1 : 0) + (has("outdoor", 1776) && fan2 !== 255 && fan2 !== undefined ? 1 : 0),
+    eev: [388, 390].filter((d) => has("outdoor", d)).length,
+    fourWay: has("outdoor", 1773),
+    compressorRps: has("outdoor", 2569),
+    suction: has("outdoor", 321) && has("outdoor", 322),
+    discharge: has("outdoor", 324) && has("outdoor", 325),
+    oil: has("outdoor", 1772),
+    evaporator: has("outdoor", 2334),
+    heatPower: has("indoor", 2494),
+    elPower: has("indoor", 2486),
+    dhw: fitted("indoor", 271) || dhwLayers.length > 0,
+    dhwDid: fitted("indoor", 271) ? 271 : (dhwLayers[0] || 271),
+    buffer: [281, 279, 277, 3016, 3017, 3018].filter((d) => fitted("indoor", d)),
+    circuits,
+    heater: !!roles.heater || (heaterPower && heaterPower.Power > 0),
+    heaterW: heaterPower ? heaterPower.Power : 0,
+    solar: fitted("indoor", 273) || fitted("indoor", 275),
+    flowSensor: fitted("indoor", 376),
+    pressure: fitted("indoor", 318),
+    pump: has("indoor", 381),
+    actors,
+    circulation: actors.includes(491),
+    diverter: actors.includes(1842) ? 1842 : (has("indoor", 386) ? 386 : 0),
+    refrigerant: plantVal("outdoor", 2568),
+    matrix: {
+      952: plantVal("indoor", 952), 1549: plantVal("indoor", 1549),
+      1238: plantVal("indoor", 1238), 1660: plantVal("indoor", 1660),
+    },
+  };
+}
+
+async function loadPlant() {
+  plant = await api("/api/plant").catch(() => ({}));
+  if (!plant || typeof plant !== "object") plant = {};
+  renderPlant();
+}
+
+async function probePlant() {
+  if (plantBusy) return;
+  const roles = plantRoles();
+  if (!roles.indoor && !roles.outdoor) {
+    $("plant-msg").textContent = "Kein Wärmeerzeuger im Scan. Erst unter System scannen.";
+    return;
+  }
+  plantBusy = true;
+  $("plant-probe").disabled = true;
+  const list = PLANT_PROBE.filter((p) => plantHas(roles, p.role, p.did));
+  const reads = {};
+  try {
+    for (let i = 0; i < list.length; i++) {
+      const p = list[i];
+      $("plant-msg").textContent = `Sondiere… ${i + 1}/${list.length} (DID ${p.did})`;
+      try {
+        const r = await api(`/api/read?ecu=${roles[p.role].addr}&did=${p.did}`);
+        reads[`${p.role}:${p.did}`] = r.value;
+      } catch (e) {
+        reads[`${p.role}:${p.did}`] = { error: e.message };
+      }
+      /* Leave the bus and the HTTP server a gap for the status poll. */
+      await plantSleep(120);
+    }
+    plant = {
+      at: new Date().toISOString(),
+      roles: Object.fromEntries(Object.entries(roles).filter(([, d]) => d).map(([k, d]) => [k, d.addrHex])),
+      reads,
+    };
+    await api("/api/plant", { method: "PUT", body: JSON.stringify(plant) });
+    $("plant-msg").textContent = `Sondiert: ${list.length} Datenpunkte.`;
+  } catch (e) {
+    $("plant-msg").textContent = `Sondierung fehlgeschlagen: ${e.message}`;
+  } finally {
+    plantBusy = false;
+    $("plant-probe").disabled = false;
+  }
+  renderPlant();
+}
+
+/* ---- the drawing ---- */
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+function sv(tag, attrs = {}, ...kids) {
+  const n = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+  n.append(...kids);
+  return n;
+}
+function svText(x, y, text, cls = "val", anchor = "middle") {
+  return sv("text", { x, y, class: cls, "text-anchor": anchor }, text);
+}
+/* A round sensor mark: thermometer (tick) or gauge (needle). */
+function svSensor(x, y, gauge) {
+  return sv("g", { class: "sym" },
+    sv("circle", { cx: x, cy: y, r: 9, fill: "#0b1020" }),
+    gauge ? sv("line", { x1: x, y1: y, x2: x + 5, y2: y - 5 })
+          : sv("line", { x1: x, y1: y - 5, x2: x, y2: y + 5 }));
+}
+function svPipe(d, cls) {
+  return sv("path", { d, class: `pipe ${cls}` });
+}
+/* Heat exchanger: a box with fins. */
+function svHx(x, y, w, h) {
+  const g = sv("g", { class: "sym" }, sv("rect", { x, y, width: w, height: h, rx: 3, fill: "#0b1020" }));
+  for (let yy = y + 8; yy < y + h - 4; yy += 8) {
+    g.append(sv("line", { x1: x + 4, y1: yy, x2: x + w - 4, y2: yy }));
+  }
+  return g;
+}
+function svValve(x, y) {   /* bow tie */
+  return sv("path", { class: "sym", d: `M${x - 12},${y - 8} L${x + 12},${y + 8} L${x + 12},${y - 8} L${x - 12},${y + 8} Z`, fill: "#0b1020" });
+}
+function svFourWay(x, y) {
+  return sv("g", { class: "sym" },
+    sv("rect", { x: x - 11, y: y - 11, width: 22, height: 22, fill: "#0b1020", transform: `rotate(45 ${x} ${y})` }),
+    sv("line", { x1: x - 6, y1: y - 6, x2: x + 6, y2: y + 6 }),
+    sv("line", { x1: x - 6, y1: y + 6, x2: x + 6, y2: y - 6 }));
+}
+function svPump(x, y, angle = 0) {   /* the triangle points the way it pumps */
+  return sv("g", { class: "sym" },
+    sv("circle", { cx: x, cy: y, r: 12, fill: "#0b1020" }),
+    sv("path", { d: `M${x - 5},${y - 7} L${x + 8},${y} L${x - 5},${y + 7} Z`, fill: "#e6edf3",
+                 transform: `rotate(${angle} ${x} ${y})` }));
+}
+function svFan(x, y) {
+  const g = sv("g", { class: "sym" }, sv("circle", { cx: x, cy: y, r: 14, fill: "#0b1020" }));
+  for (let a = 0; a < 360; a += 120) {
+    g.append(sv("path", { d: `M${x},${y} q 10,-12 2,-13 q -8,2 -2,13 Z`, fill: "#e6edf3", transform: `rotate(${a} ${x} ${y})` }));
+  }
+  return g;
+}
+function svTank(x, y, w, h) {
+  return sv("g", { class: "sym" },
+    sv("rect", { x, y, width: w, height: h, rx: 8, fill: "#0b1020" }),
+    sv("path", { d: `M${x + 4},${y + h * 0.55} q 6,-5 12,0 t 12,0 t 12,0` }));
+}
+function svHeater(x, y) {
+  return sv("path", { class: "sym", d: `M${x - 8},${y + 14} V${y - 6} q 0,-8 8,-8 q 8,0 8,8 V${y + 14} M${x},${y + 14} V${y - 2}` });
+}
+function svCompressor(x, y) {
+  return sv("g", { class: "sym" },
+    sv("circle", { cx: x, cy: y, r: 24, fill: "#0b1020" }),
+    sv("path", { d: `M${x - 10},${y - 14} A 20 20 0 0 1 ${x + 10},${y + 14} Z`, fill: "#e6edf3" }));
+}
+
+/* Each value in the picture: where it comes from and how it is shown. `part`
+   ties it to a component the profile may switch off. */
+function plantSlots(p) {
+  const S = [];
+  const add = (id, role, did, o = {}) => S.push({ id, role, did, ...o });
+  add("outside", "indoor", 274, { f: "Actual", unit: "°C", part: "outside" });
+  add("fan1", "outdoor", 1775, { unit: "%", part: "fan1" });
+  add("fan2", "outdoor", 1776, { unit: "%", part: "fan2" });
+  add("evap", "outdoor", 2334, { f: "Actual", unit: "°C", part: "evap" });
+  add("eev", "outdoor", 388, { unit: "%", part: "eev" });
+  add("fourway", "outdoor", 1773, { unit: "", part: "fourway" });
+  add("comp", "outdoor", 2346, { unit: "%", part: "comp" });
+  add("comprps", "outdoor", 2569, { unit: "rps", part: "comprps" });
+  add("suctT", "outdoor", 321, { f: "Actual", unit: "°C", part: "suction" });
+  add("suctP", "outdoor", 322, { f: "Actual", unit: "bar", part: "suction", d: 2 });
+  add("dischT", "outdoor", 324, { f: "Actual", unit: "°C", part: "discharge" });
+  add("dischP", "outdoor", 325, { f: "Actual", unit: "bar", part: "discharge", d: 2 });
+  add("oil", "outdoor", 1772, { f: "Actual", unit: "°C", part: "oil" });
+  add("heatkw", "indoor", 2494, { unit: "kW", scale: 0.001, part: "heatkw" });
+  add("elw", "indoor", 2486, { unit: "W", d: 0, part: "elw" });
+  add("ret", "indoor", 269, { f: "Actual", unit: "°C", part: "water" });
+  add("flow", "indoor", 268, { f: "Actual", unit: "°C", part: "water" });
+  add("pump", "indoor", 381, { f: "Actual", unit: "%", d: 0, part: "pump" });
+  add("press", "indoor", 318, { f: "Actual", unit: "bar", part: "press" });
+  add("massflow", "indoor", 376, { f: "Actual", unit: "l/h", d: 0, part: "massflow" });
+  add("dhw", "indoor", p.dhwDid, { f: "Actual", unit: "°C", part: "dhw" });
+  add("heater", "indoor", 2487, { unit: "W", d: 0, part: "heater" });
+  add("circ", "indoor", 491, { f: "State", unit: "", part: "circ", map: { 0: "aus", 1: "ein" } });
+  if (p.diverter) add("divert", "indoor", p.diverter, { f: p.diverter === 1842 ? "CurrentPosition" : undefined, unit: "%", part: "divert" });
+  if (p.buffer.length) add("buf", "indoor", p.buffer[0], { f: "Actual", unit: "°C", part: "buffer" });
+  for (const c of p.circuits) add(`hk${c.n}`, "indoor", c.flowDid, { f: "Actual", unit: "°C", part: `hk${c.n}` });
+  return S;
+}
+
+function plantParts(p) {
+  return {
+    outside: true, fan1: p.fans >= 1, fan2: p.fans >= 2, evap: p.evaporator, eev: p.eev > 0,
+    fourway: p.fourWay, comp: true, comprps: p.compressorRps, suction: p.suction,
+    discharge: p.discharge, oil: p.oil, heatkw: p.heatPower, elw: p.elPower,
+    water: true, pump: p.pump, press: p.pressure, massflow: p.flowSensor,
+    dhw: p.dhw, heater: p.heater, buffer: p.buffer.length > 0,
+    circ: p.circulation, divert: !!p.diverter,
+    hk1: p.circuits.some((c) => c.n === 1), hk2: p.circuits.some((c) => c.n === 2),
+    hk3: p.circuits.some((c) => c.n === 3), hk4: p.circuits.some((c) => c.n === 4),
+  };
+}
+
+function buildPlantSvg(p) {
+  const svg = sv("svg", { viewBox: "0 0 1000 420", role: "img", "aria-label": "Anlagenschema" });
+  const g = (part, ...kids) => { const n = sv("g", { "data-part": part }, ...kids); svg.append(n); return n; };
+  const V = (id, x, y, anchor = "middle") => { const t = svText(x, y, "–", "val", anchor); t.id = `pv-${id}`; return t; };
+  const L = (x, y, text, anchor = "middle") => svText(x, y, text, "lbl", anchor);
+
+  /* refrigerant: liquid line along the top, suction along the bottom */
+  svg.append(svPipe("M620,140 V100 H335", "hi"));           /* condenser -> EEV */
+  svg.append(svPipe("M325,100 H195 V140", "lo"));           /* EEV -> evaporator */
+  svg.append(svPipe("M195,280 V350 H424", "lo"));           /* evaporator -> compressor */
+  svg.append(svPipe("M476,350 H620 V280", "hi"));           /* compressor -> condenser */
+  /* heating water: flow at the bottom towards the consumers, return along
+     the right and the top back into the condenser; drawn in flow direction
+     so the animation runs the right way */
+  svg.append(svPipe("M640,260 H960", "flow"));
+  svg.append(svPipe("M960,260 V160 H640", "ret"));
+
+  g("outside", svSensor(110, 175, false), V("outside", 110, 160), L(110, 196, "Außen"));
+  g("fan1", svFan(110, 230), V("fan1", 110, 262));
+  g("fan2", svFan(110, 300), V("fan2", 110, 332));
+  g("evap", svHx(170, 140, 50, 140), svSensor(195, 300, false), V("evap", 230, 304, "start"), L(195, 130, "Verdampfer"));
+  g("eev", svValve(330, 100), V("eev", 330, 82), L(330, 124, "Expansionsventil"));
+  g("fourway", svFourWay(620, 315), V("fourway", 642, 312, "start"), L(642, 326, "Vierwegeventil", "start"));
+  g("comp", svCompressor(450, 350), L(450, 316, "Verdichter"), V("comp", 450, 394));
+  g("comprps", V("comprps", 450, 410));
+  g("oil", L(500, 304, "Öl", "start"), V("oil", 500, 318, "start"));
+  g("suction", svSensor(290, 350, false), V("suctT", 290, 378), svSensor(360, 350, true), V("suctP", 360, 378));
+  g("discharge", svSensor(515, 350, false), V("dischT", 515, 378), svSensor(585, 350, true), V("dischP", 585, 378));
+  svg.append(svHx(600, 140, 40, 140), L(620, 130, "Verflüssiger"));
+  g("heatkw", V("heatkw", 585, 215, "end"), L(585, 229, "Wärme", "end"));
+  g("elw", V("elw", 585, 250, "end"), L(585, 264, "elektrisch", "end"));
+
+  g("pump", svPump(690, 160, 180), V("pump", 690, 140), L(690, 190, "Pumpe"));
+  g("water",
+    svSensor(900, 160, false), V("ret", 900, 140), L(900, 190, "Rücklauf"),
+    svSensor(900, 260, false), V("flow", 900, 290), L(900, 304, "Vorlauf"));
+  g("divert", svValve(680, 260), V("divert", 680, 290), L(680, 304, "Umschaltventil"));
+  g("circ", svPump(960, 210, -90), V("circ", 938, 214, "end"), L(938, 228, "Zirkulation", "end"));
+  g("press", svSensor(800, 260, true), V("press", 800, 290), L(800, 304, "Druck"));
+  g("massflow", svSensor(860, 260, true), V("massflow", 860, 290), L(860, 304, "Durchfluss"));
+  /* The diverter valve's second way: flow up into the tank's coil and back
+     out to the return line, so the picture shows where the one pump's water
+     goes when hot water is being made. */
+  g("dhw",
+    svPipe("M680,250 V213 H718", "flow"),
+    svPipe("M756,213 H770 V162", "ret"),
+    svTank(720, 185, 34, 56), V("dhw", 737, 180), L(737, 255, "Warmwasser"));
+  g("heater", svHeater(800, 205), V("heater", 800, 180), L(800, 240, "Heizstab"));
+  g("buffer", svTank(850, 185, 34, 56), V("buf", 867, 180), L(867, 255, "Puffer"));
+  /* heating circuits as a row of boxes below the flow line */
+  [1, 2, 3, 4].forEach((n, i) => {
+    const x = 700 + i * 84;
+    const c = p.circuits.find((k) => k.n === n);
+    const full = c && c.name ? c.name : `Heizkreis ${n}`;
+    const label = full.length > 13 ? full.slice(0, 12) + "…" : full;
+    const lbl = L(x, 353, label);
+    if (label.length > 10) lbl.style.fontSize = "10px";
+    g(`hk${n}`, sv("rect", { class: "sym", x: x - 40, y: 338, width: 80, height: 40, rx: 4, fill: "#0b1020" }),
+      lbl, V(`hk${n}`, x, 371));
+  });
+  return svg;
+}
+
+function plantNumber(slot, v) {
+  let x = v;
+  if (x && typeof x === "object") x = slot.f && slot.f in x ? x[slot.f] : x.Actual;
+  return typeof x === "number" ? x : undefined;
+}
+
+/* Pipes move while the machine behind them does: compressor speed drives the
+   refrigerant, pump speed the water; 0 % is standstill, 100 % the fastest. */
+const plantLiveNum = {};
+function plantFlow() {
+  const svg = $("plant-svg").querySelector("svg");
+  if (!svg) return;
+  const set = (sel, pct) => {
+    if (pct === undefined) return;
+    for (const p of svg.querySelectorAll(sel)) {
+      p.classList.toggle("run", pct > 0);
+      p.style.animationDuration = `${(0.5 + 2.5 * (1 - Math.min(pct, 100) / 100)).toFixed(2)}s`;
+    }
+  };
+  set(".pipe.hi, .pipe.lo", plantLiveNum.comp);
+  set(".pipe.flow, .pipe.ret", plantLiveNum.pump);
+}
+
+function plantFormat(slot, v) {
+  let x = v;
+  if (x && typeof x === "object") x = slot.f && slot.f in x ? x[slot.f] : x.Actual;
+  if (x === undefined || x === null || typeof x === "object") return "–";
+  if (typeof x !== "number") return String(x);
+  if (slot.map && slot.map[x] !== undefined) return slot.map[x];
+  if (slot.scale) x *= slot.scale;
+  const d = slot.d !== undefined ? slot.d : (slot.unit === "%" || slot.unit === "" ? 0 : 1);
+  return `${fmtDe(x, d)}${slot.unit ? " " + slot.unit : ""}`;
+}
+
+/* ---- control points of the plant ---- */
+
+/* What is worth a control in Home Assistant, by part of the plant. A short
+   list on purpose: 161 datapoints of a Vitocal are marked writable, most of
+   them time schedules and service parameters nobody wants as a slider. Limits
+   by field, because the database only knows the width of the field. */
+const ROOM_RANGE = { Comfort: { min: 10, max: 30 }, Standard: { min: 10, max: 30 },
+                     Reduced: { min: 10, max: 30 } };
+const PLANT_CTL_CIRCUIT = [
+  { did: (i) => 880 + i, label: "Heizkennlinie (Neigung, Niveau)",
+    range: { Gradient: { min: 0.2, max: 3.5 }, Level: { min: -13, max: 40 } } },
+  { did: (i) => 424 + 2 * i, label: "Raumtemperatur-Sollwerte", range: ROOM_RANGE },
+  { did: (i) => 1415 + i, label: "Betriebsart" },
+];
+const PLANT_CTL_DHW = [
+  { did: () => 396, label: "Warmwasser-Solltemperatur", range: { "*": { min: 10, max: 60 } } },
+  { did: () => 531, label: "Warmwasser-Betriebsart" },
+];
+const plantCtlAcc = {};    /* did -> writable according to the database */
+
+async function plantCtlWritable(did) {
+  if (!(did in plantCtlAcc)) {
+    try {
+      const d = await api(`/api/datapoint?did=${did}`);
+      plantCtlAcc[did] = /w/.test((d.args && d.args.acc) || "");
+    } catch { return false; }
+  }
+  return plantCtlAcc[did];
+}
+
+async function renderPlantControls(p) {
+  const list = $("plant-ctl-list");
+  const gen = ++renderPlantControls.gen;
+  if (!p || !p.probed || !p.roles.indoor) {
+    list.innerHTML = "";
+    $("plant-ctl-add").disabled = true;
+    $("plant-ctl-msg").textContent = p ? "Erst die Anlage erkennen." : "";
+    return;
+  }
+  const dev = p.roles.indoor;
+  const groups = p.circuits.map((c) => ({
+    title: `Heizkreis ${c.n}${c.name ? ` „${c.name}“` : ""}`,
+    items: PLANT_CTL_CIRCUIT.map((t) => ({ ...t, did: t.did(c.n - 1) })),
+  }));
+  if (p.dhw) {
+    groups.push({ title: "Warmwasser", items: PLANT_CTL_DHW.map((t) => ({ ...t, did: t.did() })) });
+  }
+  const frag = document.createDocumentFragment();
+  let offered = 0;
+  for (const g of groups) {
+    const rows = [];
+    for (const it of g.items) {
+      const hit = dev.dids.find((x) => x[0] === it.did);
+      if (!hit || !await plantCtlWritable(it.did)) continue;
+      const cur = selection.get(pointKey(dev.addr, it.did));
+      const ready = cur && cur.enabled && cur.ha;
+      const box = el("input", { type: "checkbox", checked: !ready, disabled: !!ready });
+      box.dataset.did = it.did;
+      box.dataset.len = hit[1];
+      box.plantCtl = it;
+      rows.push(el("label", { className: "small", style: "display:block;margin:4px 0" }, box,
+        el("span", { textContent: ` ${it.label} ` }),
+        el("span", { className: "muted", textContent: `DID ${it.did}${ready ? " — schon in der Auswahl" : ""}` })));
+      if (!ready) offered++;
+    }
+    if (rows.length) {
+      frag.append(el("div", { style: "margin:10px 0 2px;font-weight:600", textContent: g.title }), ...rows);
+    }
+  }
+  if (gen !== renderPlantControls.gen) return;    /* a newer render overtook this one */
+  list.innerHTML = "";
+  list.append(frag);
+  $("plant-ctl-add").disabled = !offered;
+  $("plant-ctl-msg").textContent = list.children.length
+    ? (offered ? "" : "Alles schon in der Auswahl.")
+    : "Die Datenbank führt an dieser Anlage keinen dieser Punkte als schreibbar.";
+  api("/api/status").then((s) => { $("plant-ctl-write").hidden = !!s.writeEnabled; }).catch(() => {});
+}
+renderPlantControls.gen = 0;
+
+async function plantCtlAdd(btn) {
+  const p = plantProfile;
+  if (!p || !p.roles.indoor) return;
+  const dev = p.roles.indoor;
+  btn.disabled = true;
+  let added = 0, changed = 0;
+  try {
+    for (const box of $("plant-ctl-list").querySelectorAll("input:checked:not(:disabled)")) {
+      const it = box.plantCtl;
+      const key = pointKey(dev.addr, it.did);
+      const cur = selection.get(key);
+      if (cur) {
+        /* Limits somebody set by hand stay. */
+        cur.enabled = true;
+        cur.ha = true;
+        if (!cur.range && it.range) cur.range = it.range;
+        changed++;
+      } else {
+        selection.set(key, { ecu: dev.addr, did: it.did, len: Number(box.dataset.len) || 0,
+                             enabled: true, interval: 60, mode: "json", topic: "", ha: true,
+                             ...(it.range ? { range: it.range } : {}) });
+        added++;
+      }
+    }
+    await api("/api/points", { method: "PUT", body: JSON.stringify([...selection.values()]) });
+    await loadPoints();
+    $("plant-ctl-msg").textContent = `${added} aufgenommen, ${changed} für Home Assistant freigeschaltet.`;
+  } catch (e) {
+    $("plant-ctl-msg").textContent = e.message;
+  }
+  await renderPlantControls(p);
+  if (added || changed) {
+    $("plant-ctl-msg").textContent = `${added} aufgenommen, ${changed} für Home Assistant freigeschaltet.`;
+  }
+}
+
+function renderPlant() {
+  plantProfile = derivePlant();
+  renderPlantControls(plantProfile);
+  const prof = $("plant-profile");
+  prof.innerHTML = "";
+  const host = $("plant-svg");
+  host.innerHTML = "";
+  if (!plantProfile) {
+    $("plant-msg").textContent = "Kein Wärmeerzeuger im Scan. Erst unter System scannen.";
+    $("plant-note").textContent = "";
+    return;
+  }
+  const p = plantProfile;
+  const kv = (k, v) => prof.append(el("div", { className: "kv" },
+    el("div", { className: "k", textContent: k }), el("div", { className: "v", textContent: v })));
+  const yesno = (b) => (b ? "ja" : "nein");
+  kv("Modell", p.model);
+  kv("Innengerät", p.roles.indoor ? `${p.roles.indoor.addrHex} ${p.roles.indoor.prop}` : "–");
+  kv("Außeneinheit", p.roles.outdoor ? `${p.roles.outdoor.addrHex} ${p.roles.outdoor.prop}` : "keine");
+  if (!p.probed) {
+    $("plant-msg").textContent = "Noch nicht sondiert. „Anlage erkennen“ liest die Konfiguration.";
+    $("plant-note").textContent = "";
+    /* The stored probe arrives after the device list at start-up; if the tab
+       is already open by then, this is the first chance to run one. */
+    if ($("tab-plant").classList.contains("active") && !plantBusy) probePlant();
+    return;
+  }
+  kv("Lüfter", String(p.fans));
+  kv("Expansionsventile", String(p.eev));
+  kv("Vierwegeventil", yesno(p.fourWay));
+  kv("Warmwasserspeicher", yesno(p.dhw));
+  kv("Pufferspeicher", p.buffer.length ? `ja (DID ${p.buffer.join(", ")})` : "nein");
+  const CIRCUIT_DE = {
+    NormalCentralHeating: "Heizung", UnderFloorCentralHeating: "Fußbodenheizung",
+    SwimmingPool: "Schwimmbad", Baseboard: "Sockelheizung", Radiator: "Heizkörper",
+    RadiantUnderfloorHeating: "Flächenheizung", Snowmelt: "Schneeschmelze",
+    AirHandler: "Lüftungsgerät", FanCoil: "Gebläsekonvektor",
+  };
+  kv("Heizkreise", p.circuits.length
+     ? p.circuits.map((c) => {
+         const bits = [CIRCUIT_DE[c.type] || c.type, c.mixer ? "gemischt" : "", c.pump ? "eigene Pumpe" : ""].filter(Boolean);
+         return `${c.name || c.n}${bits.length ? " (" + bits.join(", ") + ")" : ""}`;
+       }).join(", ")
+     : "keiner");
+  kv("Heizstab", p.heater ? (p.heaterW ? `${fmtDe(p.heaterW / 1000, 1)} kW` : "ja") : "nein");
+  kv("Solar", yesno(p.solar));
+  kv("Durchflusssensor", yesno(p.flowSensor));
+  kv("Drucksensor", yesno(p.pressure));
+  const ACTOR_DE = {
+    381: "Heizkreispumpe", 1842: "Umschaltventil", 1774: "Kurbelwannenheizung",
+    1775: "Lüfter 1", 1776: "Lüfter 2", 388: "Expansionsventil 1", 390: "Expansionsventil 2",
+    491: "Zirkulationspumpe", 386: "Umschaltventil", 1044: "Sekundärpumpe",
+    401: "Pumpe Heizkreis 1", 402: "Pumpe Heizkreis 2", 403: "Pumpe Heizkreis 3", 404: "Pumpe Heizkreis 4",
+    475: "Mischer Heizkreis 1", 476: "Mischer Heizkreis 2", 477: "Mischer Heizkreis 3", 478: "Mischer Heizkreis 4",
+    354: "Verdampfer-Bodenheizung", 2852: "Luftkanalheizung",
+  };
+  if (p.actors.length) {
+    kv("Aktoren (DID 1238)", p.actors.map((d) => ACTOR_DE[d] || didNames[d] || `DID ${d}`).join(", "));
+  }
+  kv("Seriennummern", [p.serialIndoor, p.serialOutdoor].filter(Boolean).join(" / ") || "–");
+  const raw = Object.entries(p.matrix).filter(([, v]) => typeof v === "string").map(([k, v]) => `${k}: ${v}`);
+  if (raw.length) {
+    prof.append(el("div", { className: "kv", style: "grid-column: 1 / -1" },
+      el("div", { className: "k", textContent: "Hydraulikmatrix (roh, noch nicht entschlüsselt)" }),
+      el("div", { className: "mono small", style: "word-break: break-all; white-space: pre-wrap",
+                  textContent: raw.join("\n") })));
+  }
+  $("plant-msg").textContent = plant.at ? `Sondiert am ${new Date(plant.at).toLocaleString("de-DE")}` : "";
+
+  if (!p.outdoor) {
+    $("plant-note").textContent = "Kein Verdichter im Scan: dafür gibt es noch kein Schema.";
+    return;
+  }
+  const svg = buildPlantSvg(p);
+  const parts = plantParts(p);
+  for (const n of svg.querySelectorAll("[data-part]")) {
+    if (!parts[n.dataset.part]) n.classList.add("off");
+  }
+  host.append(svg);
+  for (const [id, v] of Object.entries(plantLive)) {
+    const t = $(`pv-${id}`);
+    if (t) t.textContent = v;
+  }
+  plantFlow();
+  $("plant-note").textContent = "";
+  plantLiveLoop();
+}
+
+function plantActiveSlots(profile) {
+  const p = profile || plantProfile;
+  if (!p || !p.outdoor) return [];
+  const parts = plantParts(p);
+  return plantSlots(p).filter((s) => parts[s.part] && p.roles[s.role]
+                                    && plantHas(p.roles, s.role, s.did));
+}
+
+/* One datapoint per second, strictly in sequence, only while the tab shows.
+   Every read is a bus round trip inside the HTTP server; two at once would
+   queue behind each other and stall the status poll with them. */
+async function plantLiveLoop() {
+  if (plantRunning) return;
+  plantRunning = true;
+  const gen = ++plantGen;
+  const visible = () => $("tab-plant").classList.contains("active") && gen === plantGen;
+  try {
+    while (visible()) {
+      const slots = plantActiveSlots();
+      if (!slots.length) break;
+      for (const s of slots) {
+        if (!visible()) break;
+        const t0 = Date.now();
+        const t = $(`pv-${s.id}`);
+        try {
+          const r = await api(`/api/read?ecu=${plantProfile.roles[s.role].addr}&did=${s.did}`);
+          plantLive[s.id] = plantFormat(s, r.value);
+          if (t) { t.textContent = plantLive[s.id]; t.classList.remove("stale"); }
+          if (s.id === "comp" || s.id === "pump") {
+            plantLiveNum[s.id] = plantNumber(s, r.value);
+            plantFlow();
+          }
+        } catch {
+          if (t) t.classList.add("stale");
+        }
+        const wait = 1000 - (Date.now() - t0);
+        if (wait > 0) await plantSleep(wait);
+      }
+    }
+  } finally {
+    plantRunning = false;
+  }
+}
+
+/* ---- Home Assistant: the same picture as a picture-elements card ---- */
+
+/* Home Assistant builds the entity id of a discovered sensor from the device
+   name and the entity name, both slugified. Discovery here names the device
+   after the base topic and the entity after datapoint and field. */
+function plantHaEntity(slot) {
+  const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  const base = ($("mq-base") && $("mq-base").value) || "open3e";
+  const name = `${didNames[slot.did] || "did" + slot.did}${slot.f ? " " + slot.f : ""}`;
+  return `sensor.${slug(base)}_${slug(name)}`;
+}
+
+/* Every datapoint the picture uses goes into the selection with the HA flag,
+   so discovery announces the sensors the card refers to. Existing entries
+   keep their interval and mode; only the flag is switched on. */
+async function plantHaPoints(btn) {
+  const p = plantProfile;
+  if (!p || !p.outdoor) return;
+  btn.disabled = true;
+  let added = 0, flagged = 0;
+  try {
+    for (const s of plantActiveSlots()) {
+      const dev = p.roles[s.role];
+      const key = pointKey(dev.addr, s.did);
+      const cur = selection.get(key);
+      if (cur) {
+        if (!cur.ha) { cur.ha = true; flagged++; }
+        continue;
+      }
+      const hit = dev.dids.find((x) => x[0] === s.did);
+      selection.set(key, { ecu: dev.addr, did: s.did, len: hit ? hit[1] : 0, enabled: true,
+                           interval: 15, mode: "json", topic: "", ha: true });
+      added++;
+    }
+    await api("/api/points", { method: "PUT", body: JSON.stringify([...selection.values()]) });
+    await loadPoints();
+    $("plant-ha-msg").textContent = `${added} Datenpunkte aufgenommen, ${flagged} für HA freigeschaltet.`;
+  } catch (e) {
+    $("plant-ha-msg").textContent = e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* The picture without values: the stylesheet's rules travel inside, since the
+   file is loaded as an image, and the dark ground becomes a rectangle. */
+function plantBackgroundSvg(p) {
+  const svg = buildPlantSvg(p);
+  const parts = plantParts(p);
+  for (const n of svg.querySelectorAll("[data-part]")) {
+    if (!parts[n.dataset.part]) n.remove();
+  }
+  for (const t of svg.querySelectorAll("text.val")) t.remove();
+  svg.prepend(sv("rect", { width: 1000, height: 420, fill: "#0b1020" }));
+  const style = sv("style", {});
+  style.textContent =
+    "text{font:13px Arial,Helvetica,sans-serif;fill:#e6edf3}text.lbl{font-size:11px;fill:#9198a1}"
+    + ".sym{fill:none;stroke:#e6edf3;stroke-width:2}"
+    + ".pipe{fill:none;stroke-width:4;stroke-linecap:round;stroke-linejoin:round;"
+    + "stroke-dasharray:12 10;animation:f 1.2s linear infinite}@keyframes f{to{stroke-dashoffset:-22}}"
+    + ".hi{stroke:#f97316}.lo{stroke:#38bdf8}.flow{stroke:#ef4444}.ret{stroke:#60a5fa}";
+  svg.prepend(style);
+  return new XMLSerializer().serializeToString(svg);
+}
+
+/* The same picture with {{id}} where the values go, and the list of what
+   belongs there: the firmware fills it every minute and publishes it, so a
+   dashboard that can only show an image (Grafana, a wall display) gets the
+   values too. Built from the same drawing as everything else. */
+function plantLiveTemplate(p) {
+  const svg = buildPlantSvg(p);
+  const parts = plantParts(p);
+  for (const n of svg.querySelectorAll("[data-part]")) {
+    if (!parts[n.dataset.part]) n.remove();
+  }
+  for (const t of svg.querySelectorAll("text.val")) {
+    t.textContent = `{{${t.id.replace(/^pv-/, "")}}}`;
+  }
+  svg.prepend(sv("rect", { width: 1000, height: 420, fill: "#0b1020" }));
+  const style = sv("style", {});
+  style.textContent =
+    "text{font:13px Arial,Helvetica,sans-serif;fill:#e6edf3}text.val{font-weight:600}"
+    + "text.lbl{font-size:11px;fill:#9198a1}.sym{fill:none;stroke:#e6edf3;stroke-width:2}"
+    + ".pipe{fill:none;stroke-width:4;stroke-linecap:round;stroke-linejoin:round;"
+    + "stroke-dasharray:12 10;animation:f 1.2s linear infinite}@keyframes f{to{stroke-dashoffset:-22}}"
+    + ".hi{stroke:#f97316}.lo{stroke:#38bdf8}.flow{stroke:#ef4444}.ret{stroke:#60a5fa}";
+  svg.prepend(style);
+  return new XMLSerializer().serializeToString(svg);
+}
+function plantLiveSlots(p) {
+  return plantActiveSlots(p).map((s) => ({
+    id: s.id, ecu: p.roles[s.role].addr, did: s.did,
+    ...(s.f ? { f: s.f } : {}), unit: s.unit || "",
+    ...(s.d !== undefined ? { d: s.d } : {}),
+    ...(s.scale ? { scale: s.scale } : {}),
+    ...(s.map ? { map: s.map } : {}),
+  }));
+}
+
+async function plantPut(path, body) {
+  const r = await fetch(path, { method: "PUT", body });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+}
+
+async function plantHaCard(btn) {
+  const p = plantProfile;
+  if (!p || !p.outdoor) return;
+  btn.disabled = true;
+  try {
+    await plantPut("/api/plant/svg", plantBackgroundSvg(p));
+    await plantPut("/api/plant/live", plantLiveTemplate(p));
+    await plantPut("/api/plant/slots", JSON.stringify(plantLiveSlots(p)));
+    /* Positions come from the drawn picture itself, so card and picture never
+       drift apart; percentages because the card scales with the dashboard. */
+    const svg = buildPlantSvg(p);
+    const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+    const base = ($("mq-base") && $("mq-base").value) || "open3e";
+    /* The picture itself: as an image entity when MQTT is on, since Home
+       Assistant then serves it from anywhere; the gateway's own URL only works
+       on the LAN and not from an https dashboard. */
+    const mqttOn = $("mq-enabled") && $("mq-enabled").checked;
+    const lines = ["type: picture-elements"];
+    if (mqttOn) {
+      lines.push(`image_entity: image.${slug(base)}_anlagenschema`,
+                 `# Alternativ ohne MQTT-Bild: image: /local/plant.svg (Datei aus „SVG herunterladen“ nach config/www)`,
+                 `# Fertiges Bild mit Werten (Grafana u. a.): MQTT-Topic ${base}/plant/live, retained, image/svg+xml, jede Minute; Base64 auf ${base}/plant/live/b64`);
+    } else {
+      lines.push(`image: /local/plant.svg`,
+                 `# Datei aus „SVG herunterladen“ nach config/www kopieren; nur im LAN geht auch http://${location.host}/plant.svg`);
+    }
+    lines.push("elements:");
+    for (const s of plantActiveSlots()) {
+      const t = svg.querySelector(`#pv-${s.id}`);
+      if (!t) continue;
+      const anchor = t.getAttribute("text-anchor");
+      let left = Number(t.getAttribute("x")) / 10;
+      const top = Number(t.getAttribute("y")) / 4.2 - 1.2;
+      if (anchor === "start") left += 3;
+      if (anchor === "end") left -= 3;
+      lines.push(`  - type: state-label`,
+                 `    entity: ${plantHaEntity(s)}`,
+                 `    style:`,
+                 `      top: ${top.toFixed(1)}%`,
+                 `      left: ${left.toFixed(1)}%`,
+                 `      color: "#e6edf3"`,
+                 `      font-weight: "600"`,
+                 `      font-size: 13px`);
+    }
+    const ta = $("plant-ha-yaml");
+    ta.value = lines.join("\n");
+    ta.hidden = false;
+    $("plant-ha-copy").hidden = false;
+    $("plant-ha-msg").textContent = `Bild gespeichert${mqttOn ? ` und per MQTT veröffentlicht; das Bild mit Werten folgt jede Minute auf ${base}/plant/live` : ""}, ${plantActiveSlots().length} Werte in der Karte.`;
+  } catch (e) {
+    $("plant-ha-msg").textContent = e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* Opening the tab: draw from what is stored, probe once if nothing is. */
+function onPlantShown() {
+  if (!plantProfile) renderPlant();
+  if (plantProfile && !plantProfile.probed && !plantBusy) {
+    probePlant();
+  } else {
+    plantLiveLoop();
+  }
 }
 
 async function poll() {

@@ -1,5 +1,7 @@
 #include "ha_disco.h"
 
+#include "mbedtls/base64.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -675,6 +677,7 @@ static void ha_disco_walk_selection(bool clear)
 
     /* Not datapoints, so the walk never reaches them -- announced separately. */
     ha_disco_grid(&cfg, dev_id, clear);
+    ha_disco_plant_image(clear);
     ha_disco_contacts(&cfg, dev_id, clear);
 
     /* Counted separately: "published for 19 datapoints" says nothing about
@@ -828,6 +831,212 @@ void ha_disco_counts(int *sensors, int *controls)
     if (controls) {
         *controls = n_controls;
     }
+}
+
+/* Last known machine state, as the picture shows it. Unknown means moving:
+ * until someone has looked, the picture is the plain one. */
+static bool s_plant_comp = true;
+static bool s_plant_pump = true;
+
+/* Idle circuits stand still: a style rule appended inside the document
+ * overrides the animation the web interface put there. Takes ownership of
+ * `svg` and returns the document to publish (the same one when nothing
+ * stands still or memory is short). */
+static char *plant_styled(char *svg)
+{
+    if (s_plant_comp && s_plant_pump) {
+        return svg;
+    }
+    char *end = strstr(svg, "</svg>");
+    if (!end) {
+        return svg;
+    }
+    const char *rule = (!s_plant_comp && !s_plant_pump)
+        ? "<style>.pipe{animation:none}</style>"
+        : (!s_plant_comp ? "<style>.hi,.lo{animation:none}</style>"
+                         : "<style>.flow,.ret{animation:none}</style>");
+    size_t head = (size_t)(end - svg);
+    char *with = malloc(strlen(svg) + strlen(rule) + 1);
+    if (!with) {
+        return svg;
+    }
+    memcpy(with, svg, head);
+    strcpy(with + head, rule);
+    strcat(with, end);
+    free(svg);
+    return with;
+}
+
+/* One image entity's discovery config, or its retraction. */
+static void plant_image_config(const mqtt_cfg_t *cfg, const char *dev_id,
+                               const char *object, const char *name,
+                               const char *image_topic, bool clear)
+{
+    char conf[352];
+    snprintf(conf, sizeof(conf), "%s/image/%s/%s/config", cfg->ha_prefix, dev_id, object);
+    if (clear || !cfg->ha_discovery) {
+        if (clear) {
+            mqtt_pub_raw(conf, "", true);
+        }
+        return;
+    }
+    o3e_buf_t b;
+    o3e_buf_init(&b);
+    o3e_buf_adds(&b, "{\"name\": ");
+    o3e_buf_add_json_str(&b, name);
+    o3e_buf_adds(&b, ", \"image_topic\": ");
+    o3e_buf_add_json_str(&b, image_topic);
+    o3e_buf_adds(&b, ", \"content_type\": \"image/svg+xml\", \"unique_id\": ");
+    char uid[64];
+    snprintf(uid, sizeof(uid), "%s_%s", dev_id, object);
+    o3e_buf_add_json_str(&b, uid);
+    o3e_buf_adds(&b, ", \"device\": {\"identifiers\": [");
+    o3e_buf_add_json_str(&b, dev_id);
+    o3e_buf_adds(&b, "]}}");
+    if (!b.oom && b.buf) {
+        mqtt_pub_raw(conf, b.buf, true);
+    }
+    o3e_buf_free(&b);
+}
+
+/* `text` Base64-coded, retained on `topic`. */
+static void pub_base64(const char *topic, const char *text)
+{
+    size_t len = strlen(text);
+    size_t need = 0;
+    mbedtls_base64_encode(NULL, 0, &need, (const unsigned char *)text, len);
+    char *b64 = malloc(need + 1);
+    if (!b64) {
+        return;
+    }
+    size_t olen = 0;
+    if (mbedtls_base64_encode((unsigned char *)b64, need, &olen,
+                              (const unsigned char *)text, len) == 0) {
+        b64[olen] = '\0';
+        mqtt_pub_raw(topic, b64, true);
+    }
+    free(b64);
+}
+
+void ha_disco_curve_image(int circuit, const char *name, const char *svg)
+{
+    mqtt_cfg_t cfg;
+    mqtt_cfg_get(&cfg);
+    if (!cfg.enabled || !mqtt_pub_connected() || circuit < 1 || circuit > 8) {
+        return;
+    }
+    char dev_id[32];
+    device_id(dev_id, sizeof(dev_id));
+    char topic[CFG_TOPIC_MAX + 16];
+    snprintf(topic, sizeof(topic), "%s/curve/%d", cfg.base_topic, circuit);
+    char t64[CFG_TOPIC_MAX + 24];
+    snprintf(t64, sizeof(t64), "%s/b64", topic);
+    char object[16];
+    snprintf(object, sizeof(object), "curve_%d", circuit);
+    if (!svg) {
+        mqtt_pub_raw(topic, "", true);
+        mqtt_pub_raw(t64, "", true);
+        plant_image_config(&cfg, dev_id, object, "", topic, true);
+        return;
+    }
+    mqtt_pub_raw(topic, svg, true);
+    pub_base64(t64, svg);
+    char label[96];
+    if (name && name[0]) {
+        snprintf(label, sizeof(label), "Heizkennlinie %s", name);
+    } else {
+        snprintf(label, sizeof(label), "Heizkennlinie Heizkreis %d", circuit);
+    }
+    plant_image_config(&cfg, dev_id, object, label, topic, false);
+}
+
+void ha_disco_plant_live(const char *svg)
+{
+    mqtt_cfg_t cfg;
+    mqtt_cfg_get(&cfg);
+    if (!cfg.enabled || !mqtt_pub_connected() || !svg) {
+        return;
+    }
+    char dev_id[32];
+    device_id(dev_id, sizeof(dev_id));
+    char topic[CFG_TOPIC_MAX + 16];
+    snprintf(topic, sizeof(topic), "%s/plant/live", cfg.base_topic);
+    char *copy = strdup(svg);
+    if (!copy) {
+        return;
+    }
+    copy = plant_styled(copy);
+    mqtt_pub_raw(topic, copy, true);
+    /* The same picture Base64-coded on <base>/plant/live/b64: Grafana's image
+     * panels take a data URL but not raw SVG text (lingej, #22). */
+    char t64[CFG_TOPIC_MAX + 24];
+    snprintf(t64, sizeof(t64), "%s/plant/live/b64", cfg.base_topic);
+    pub_base64(t64, copy);
+    free(copy);
+    plant_image_config(&cfg, dev_id, "plant_live", "Anlagenschema live", topic, false);
+}
+
+void ha_disco_plant_state(bool compressor_running, bool pump_running)
+{
+    if (compressor_running == s_plant_comp && pump_running == s_plant_pump) {
+        return;
+    }
+    s_plant_comp = compressor_running;
+    s_plant_pump = pump_running;
+    ha_disco_plant_image(false);
+}
+
+void ha_disco_plant_image(bool clear)
+{
+    mqtt_cfg_t cfg;
+    mqtt_cfg_get(&cfg);
+    if (!cfg.enabled || !mqtt_pub_connected()) {
+        return;
+    }
+    char dev_id[32];
+    device_id(dev_id, sizeof(dev_id));
+    char topic[CFG_TOPIC_MAX + 16];
+    snprintf(topic, sizeof(topic), "%s/plant/svg", cfg.base_topic);
+    char conf[352];
+    snprintf(conf, sizeof(conf), "%s/image/%s/plant/config", cfg.ha_prefix, dev_id);
+
+    char *svg = clear ? NULL : app_config_read_file(CFG_WWW_DIR "/plant.svg");
+    /* Only a real picture goes out; a missing file, or the wrong file handed
+     * back by a test stub, must not become a retained payload. */
+    bool have = svg && strncmp(svg, "<svg", 4) == 0;
+    if (!have) {
+        free(svg);
+        mqtt_pub_raw(topic, "", true);
+        mqtt_pub_raw(conf, "", true);
+        /* The filled picture goes with it; plant_image.c renders a new one
+         * within a minute if the template is still there. */
+        char live[CFG_TOPIC_MAX + 16];
+        snprintf(live, sizeof(live), "%s/plant/live", cfg.base_topic);
+        mqtt_pub_raw(live, "", true);
+        plant_image_config(&cfg, dev_id, "plant_live", "", live, true);
+        return;
+    }
+    svg = plant_styled(svg);
+    mqtt_pub_raw(topic, svg, true);
+    free(svg);
+    if (!cfg.ha_discovery) {
+        return;
+    }
+    o3e_buf_t b;
+    o3e_buf_init(&b);
+    o3e_buf_adds(&b, "{\"name\": \"Anlagenschema\", \"image_topic\": ");
+    o3e_buf_add_json_str(&b, topic);
+    o3e_buf_adds(&b, ", \"content_type\": \"image/svg+xml\", \"unique_id\": ");
+    char uid[48];
+    snprintf(uid, sizeof(uid), "%s_plant", dev_id);
+    o3e_buf_add_json_str(&b, uid);
+    o3e_buf_adds(&b, ", \"device\": {\"identifiers\": [");
+    o3e_buf_add_json_str(&b, dev_id);
+    o3e_buf_adds(&b, "]}}");
+    if (!b.oom && b.buf) {
+        mqtt_pub_raw(conf, b.buf, true);
+    }
+    o3e_buf_free(&b);
 }
 
 void ha_disco_publish_all(void) { ha_disco_walk_selection(false); }

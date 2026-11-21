@@ -460,6 +460,47 @@ int main(int argc, char **argv)
         cJSON_Delete(j);
     }
 
+    /* --- a heating curve's picture: image entity, raw and Base64 --- */
+    reset("[]", "open3e-vent/cmnd", "flat");
+    ha_disco_curve_image(2, "Fu\xc3\x9f""boden", "<svg/>");
+    m = find("open3e-vent/curve/2");
+    ok("curve picture is published", m && strcmp(m->payload, "<svg/>") == 0, NULL);
+    m = find("open3e-vent/curve/2/b64");
+    ok("and Base64-coded next to it", m && strcmp(m->payload, "PHN2Zy8+") == 0,
+       m ? m->payload : "(none)");
+    m = find("homeassistant/image/open3e_112233/curve_2/config");
+    ok("curve image is announced", m != NULL, NULL);
+    if (m) {
+        cJSON *j = cJSON_Parse(m->payload);
+        const cJSON *nm = j ? cJSON_GetObjectItem(j, "name") : NULL;
+        const cJSON *it = j ? cJSON_GetObjectItem(j, "image_topic") : NULL;
+        const cJSON *ct = j ? cJSON_GetObjectItem(j, "content_type") : NULL;
+        ok("named after the circuit",
+           cJSON_IsString(nm) && strcmp(nm->valuestring, "Heizkennlinie Fu\xc3\x9f""boden") == 0,
+           m->payload);
+        ok("pointing at the picture",
+           cJSON_IsString(it) && strcmp(it->valuestring, "open3e-vent/curve/2") == 0
+             && cJSON_IsString(ct) && strcmp(ct->valuestring, "image/svg+xml") == 0,
+           m->payload);
+        cJSON_Delete(j);
+    }
+    reset("[]", "open3e-vent/cmnd", "flat");
+    ha_disco_curve_image(2, NULL, "<svg/>");
+    m = find("homeassistant/image/open3e_112233/curve_2/config");
+    ok("a circuit without a name is numbered",
+       m && strstr(m->payload, "\"Heizkennlinie Heizkreis 2\"") != NULL, m ? m->payload : "");
+    reset("[]", "open3e-vent/cmnd", "flat");
+    ha_disco_curve_image(2, NULL, NULL);
+    m = find("homeassistant/image/open3e_112233/curve_2/config");
+    ok("a deselected curve retracts its entity", m && m->payload[0] == '\0', NULL);
+    m = find("open3e-vent/curve/2");
+    ok("and its picture", m && m->payload[0] == '\0', NULL);
+    m = find("open3e-vent/curve/2/b64");
+    ok("in both forms", m && m->payload[0] == '\0', NULL);
+    reset("[]", "open3e-vent/cmnd", "flat");
+    ha_disco_curve_image(9, NULL, "<svg/>");
+    ok("there is no ninth circuit", find("open3e-vent/curve/9") == NULL, NULL);
+
     /* --- the contact inputs --- */
     snprintf(points, sizeof(points), POINTS_533, "flat");
     reset(points, "open3e-vent/cmnd", "flat");

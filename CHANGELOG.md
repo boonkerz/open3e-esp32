@@ -13,6 +13,35 @@ bis dahin auf der Flash-Seite lag.
 
 ### Hinzugefügt
 
+- **Steuerpunkte aus dem Reiter Anlage wählen.** Die Karte „Steuern" bietet
+  je erkanntem Heizkreis Kennlinie, Raumtemperatur-Sollwerte und Betriebsart
+  an, dazu Warmwasser-Solltemperatur und -Betriebsart, und nimmt sie mit
+  Grenzen und Home-Assistant-Häkchen in die Auswahl. Die Spalte „Grenzen"
+  fasst dafür mehrere Felder (`Gradient: 0.2..3.5; Level: -13..40`).
+
+- **Reiter „Anlage".** Erkennt die Konfiguration einer Wärmepumpe aus
+  Scan und einer einmaligen Sondierung (Rollen der Steuergeräte,
+  Sensorstatus `not_available` gegen `no_error`, Konfigurations-Datenpunkte)
+  und zeichnet Kältekreis und Hydraulik nach dem Vorbild der
+  Viessmann-Serviceansicht mit Live-Werten: Lüfter, Verdampfer,
+  Expansionsventil, Verdichter mit Saug- und Hochdruckseite, Vierwegeventil,
+  Verflüssiger, Pumpe, Vor-/Rücklauf, Warmwasser, Heizstab, Puffer,
+  Heizkreise. Teile, die die Anlage nicht hat, fehlen im Bild. Den Modellnamen
+  gibt der Bus nicht her (nur Seriennummer und Nennleistung). Die Sondierung
+  liegt als `/data/plant.json` auf dem Gerät und wandert mit der Sicherung.
+  DID 1238 ist entschlüsselt (Liste der Aktoren als Datenpunktnummern) und
+  bringt Umschaltventil und Zirkulationspumpe ins Bild. Die Leitungen zeigen
+  die Fließrichtung, solange Verdichter beziehungsweise Pumpe laufen.
+  Für Home Assistant erzeugt der Reiter dasselbe Bild als
+  Picture-Elements-Karte: das leere Schema geht per MQTT als Image-Entität
+  an Home Assistant (so ist es auch von unterwegs sichtbar, und die
+  Animation steht, wenn Verdichter oder Pumpe stehen), die Werte
+  kommen aus den per Discovery angelegten Sensoren, YAML zum Einfügen;
+  alternativ als Datei zum Herunterladen für `config/www`. Für Grafana und
+  andere Anzeigen ohne Overlay veröffentlicht die Firmware jede Minute das
+  fertige Bild mit eingesetzten Werten auf `<Basis>/plant/live`, Base64 auf
+  `<Basis>/plant/live/b64`.
+
 - **Schreibgrenzen je Datenpunkt.** Neue Spalte „Grenzen" in der
   Datenpunkttabelle (`10..60`, `..60`, `Comfort: 10..60`; Feld `range` in
   `points.json`). Home Assistant bekommt den Bereich als `min`/`max` seiner
@@ -44,6 +73,12 @@ bis dahin auf der Flash-Seite lag.
   deshalb als schreibbar. Mit „Schreiben freigeben" entstehen Regler; Grenzen
   in der Datenpunkt-Tabelle setzen (`Gradient: 0.2..3.5`, `Level: -13..40`).
   Geprüft an Heizkreis 1 einer Anlage. Kommt mit dem nächsten `storage.bin`.
+- **Heizkennlinie als Bild.** Wer die Heizkennlinie eines Kreises auswählt,
+  bekommt ihr Diagramm dazu, gezeichnet wie in der App: Vorlauf über
+  Außentemperatur, Stützpunkte beschriftet, Vorlaufgrenzen des Kreises, der
+  aktuelle Betriebspunkt mit dem Sollwert der Anlage. Als SVG retained auf
+  `<Basis>/curve/<n>`, Base64-codiert auf `<Basis>/curve/<n>/b64`, in Home
+  Assistant per Discovery als Bild-Entität „Heizkennlinie <Kreis>".
 - **Favicon** für die Weboberfläche (#11, wunderbaum): zwei gegenläufige
   Leitungen mit Knoten in der Mitte, sein zweiter Vorschlag. Die Flash-Seite
   trägt dasselbe Symbol. Kommt mit dem nächsten `storage.bin`.

@@ -21,4 +21,26 @@ void ha_disco_clear_all(void);
  * datapoint, so the two are worth reporting apart. */
 void ha_disco_counts(int *sensors, int *controls);
 
+/* The plant schematic as an image entity: the SVG the web interface stored
+ * goes out retained on <base>/plant/svg, and discovery announces it, so a
+ * picture-elements card can use image_entity and Home Assistant serves the
+ * picture itself -- reachable from outside, where the gateway is not. */
+void ha_disco_plant_image(bool clear);
+
+/* Which circuits are moving. The picture goes out again only when this
+ * changes; idle circuits get their animation switched off inside the SVG. */
+void ha_disco_plant_state(bool compressor_running, bool pump_running);
+
+/* The picture with the values already in it, rendered by plant_image.c:
+ * retained on <base>/plant/live and announced as a second image entity.
+ * For dashboards that cannot overlay sensors on a background, Grafana among
+ * them. The idle-circuit style is applied here like for the background. */
+void ha_disco_plant_live(const char *svg);
+
+/* A circuit's heating curve as a picture (heat_curve.c), next to the two
+ * numbers that set it: retained on <base>/curve/<n>, Base64-coded on
+ * <base>/curve/<n>/b64, announced as the image entity "Heizkennlinie <name>".
+ * `circuit` counts from 1. A NULL picture retracts all three. */
+void ha_disco_curve_image(int circuit, const char *name, const char *svg);
+
 #endif /* O3E_HA_DISCO_H */

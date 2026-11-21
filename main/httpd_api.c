@@ -936,6 +936,99 @@ static esp_err_t h_points_get(httpd_req_t *r)
     return e;
 }
 
+/* The plant probe: an opaque JSON object the web interface stores after it
+ * has read the datapoints that tell one installation from another. Kept on
+ * the device rather than in the browser so every browser, and the backup,
+ * sees the same plant; the device itself never interprets it. */
+static esp_err_t h_plant_get(httpd_req_t *r)
+{
+    char *json = app_config_read_file(CFG_PLANT_PATH);
+    esp_err_t e = send_json(r, json ? json : "{}");
+    free(json);
+    return e;
+}
+
+static esp_err_t h_plant_put(httpd_req_t *r)
+{
+    char *body = read_body(r);
+    if (!body) {
+        return ESP_OK;
+    }
+    cJSON *j = cJSON_Parse(body);
+    if (!cJSON_IsObject(j)) {
+        cJSON_Delete(j);
+        free(body);
+        return send_err(r, 400, "expected a JSON object");
+    }
+    cJSON_Delete(j);
+    bool ok = app_config_write_file(CFG_PLANT_PATH, body, strlen(body));
+    free(body);
+    if (!ok) {
+        return send_err(r, 500, "could not save the plant profile");
+    }
+    return send_json(r, "{\"ok\": true}");
+}
+
+/* The schematic without values, drawn by the browser from the profile and
+ * stored next to the web files, so Home Assistant's picture-elements card can
+ * use http://<gateway>/plant.svg as its background. Served by serve_file()
+ * like any other asset; a new storage image drops it, and the card button
+ * puts it back. */
+static esp_err_t h_plant_svg_put(httpd_req_t *r)
+{
+    char *body = read_body(r);
+    if (!body) {
+        return ESP_OK;
+    }
+    if (strncmp(body, "<svg", 4) != 0) {
+        free(body);
+        return send_err(r, 400, "expected an SVG document");
+    }
+    bool ok = app_config_write_file(CFG_WWW_DIR "/plant.svg", body, strlen(body));
+    free(body);
+    if (!ok) {
+        return send_err(r, 500, "could not save the picture");
+    }
+    ha_disco_plant_image(false);
+    return send_json(r, "{\"ok\": true}");
+}
+
+/* The same picture as a template with {{id}} in place of every value, plus
+ * the list of datapoints behind the ids: plant_image.c fills it every minute
+ * and publishes the result, for dashboards that want a finished image. */
+static esp_err_t h_plant_live_put(httpd_req_t *r)
+{
+    char *body = read_body(r);
+    if (!body) {
+        return ESP_OK;
+    }
+    if (strncmp(body, "<svg", 4) != 0) {
+        free(body);
+        return send_err(r, 400, "expected an SVG document");
+    }
+    bool ok = app_config_write_file(CFG_WWW_DIR "/plant_live.svg", body, strlen(body));
+    free(body);
+    return ok ? send_json(r, "{\"ok\": true}") : send_err(r, 500, "could not save the template");
+}
+
+static esp_err_t h_plant_slots_put(httpd_req_t *r)
+{
+    char *body = read_body(r);
+    if (!body) {
+        return ESP_OK;
+    }
+    cJSON *j = cJSON_Parse(body);
+    if (!cJSON_IsArray(j)) {
+        cJSON_Delete(j);
+        free(body);
+        return send_err(r, 400, "expected a JSON array of slots");
+    }
+    cJSON_Delete(j);
+    bool ok = app_config_write_file(CFG_MOUNT "/plant_slots.json", body, strlen(body));
+    free(body);
+    return ok ? send_json(r, "{\"ok\": true}") : send_err(r, 500, "could not save the slots");
+}
+
 static esp_err_t h_points_put(httpd_req_t *r)
 {
     char *body = read_body(r);
@@ -1628,6 +1721,11 @@ static esp_err_t h_export(httpd_req_t *r)
         if (!stream_file_inline(r, CFG_SYSTEM_PATH, "null")) {
             return ESP_FAIL;
         }
+        /* The probe belongs to the scan: both describe this plant. */
+        send_chunk_str(r, ", \"plant\": ");
+        if (!stream_file_inline(r, CFG_PLANT_PATH, "null")) {
+            return ESP_FAIL;
+        }
     }
     send_chunk_str(r, "}");
     return httpd_resp_send_chunk(r, NULL, 0);
@@ -1828,6 +1926,11 @@ static bool import_apply(const cJSON *root, char *err, size_t err_sz)
     const cJSON *jsc = cJSON_GetObjectItem(root, "scan");
     if (cJSON_IsObject(jsc) && !write_section(jsc, CFG_SYSTEM_PATH)) {
         snprintf(err, err_sz, "could not write the scan result");
+        return false;
+    }
+    const cJSON *jpl = cJSON_GetObjectItem(root, "plant");
+    if (cJSON_IsObject(jpl) && !write_section(jpl, CFG_PLANT_PATH)) {
+        snprintf(err, err_sz, "could not write the plant profile");
         return false;
     }
     return true;
@@ -2506,6 +2609,13 @@ static esp_err_t h_fallback(httpd_req_t *r)
     if (strncmp(r->uri, "/api/", 5) == 0) {
         return send_err(r, 404, "no such endpoint");
     }
+    /* A path with a file extension is an asset, not an app route: a missing
+     * /plant.svg answered with the app's HTML shows up in Home Assistant as a
+     * broken picture-elements background, not as the 404 it is. */
+    const char *dot = strrchr(r->uri, '.');
+    if (dot && !strchr(dot, '/')) {
+        return send_err(r, 404, "no such file");
+    }
     return serve_file(r, "/index.html") == ESP_OK
          ? ESP_OK
          : send_err(r, 404, "web interface not installed on the storage partition");
@@ -2538,6 +2648,11 @@ static const httpd_uri_t routes[] = {
     { "/api/broadcast",   HTTP_GET,  h_collect,      NULL },
     { "/api/points",      HTTP_GET,  h_points_get,   NULL },
     { "/api/points",      HTTP_PUT,  h_points_put,   NULL },
+    { "/api/plant",       HTTP_GET,  h_plant_get,    NULL },
+    { "/api/plant",       HTTP_PUT,  h_plant_put,    NULL },
+    { "/api/plant/svg",   HTTP_PUT,  h_plant_svg_put, NULL },
+    { "/api/plant/live",  HTTP_PUT,  h_plant_live_put, NULL },
+    { "/api/plant/slots", HTTP_PUT,  h_plant_slots_put, NULL },
     { "/api/read",        HTTP_GET,  h_read,         NULL },
     { "/api/write",       HTTP_POST, h_write,        NULL },
     { "/api/grid",        HTTP_POST, h_grid,         NULL },
