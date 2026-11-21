@@ -69,6 +69,18 @@ separater Anlagen-/Zubehörbus). Nur auf einem davon liegt der Verkehr, den
 open3e erwartet — die Bus-Diagnose unten sagt, ob am angeschlossenen Strang
 überhaupt jemand sendet.
 
+> **Vor Inbetriebnahme und Software-Update der Anlage das Gateway vom Bus
+> nehmen.** CAN-Stecker abziehen oder das Gerät stromlos machen und erst
+> wieder anschließen, wenn die Anlage normal läuft. Bei der Inbetriebnahme
+> und beim Update überträgt die Regelung selbst per UDS Daten an die
+> Steuergeräte, auf denselben Adressen, die das Gateway abfragt. Eine
+> Abfrage mitten in einer solchen Übertragung kann sie stören. In
+> [open3e #413](https://github.com/open3e/open3e/discussions/413) meldete
+> sich nach einer Inbetriebnahme mit laufendem open3e am internen Bus die
+> Außeneinheit nicht mehr an, und das Bedienfeld verlangte das Service-Tool.
+> Ob die Abfragen die Ursache waren, ist nicht geklärt; am internen Bus ist
+> das Risiko am größten, abziehen kostet nichts.
+
 ### Läuft der Build, den ich gerade gebaut habe?
 
 Die Statusseite zeigt **Build-Zeitpunkt** und eine **Build-Kennung** — die ersten
