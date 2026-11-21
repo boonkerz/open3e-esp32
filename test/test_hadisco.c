@@ -255,6 +255,32 @@ int main(int argc, char **argv)
         ok("temperature leaf is announced", 0, NULL);
     }
 
+    /* --- open3e labels the pressure sensors hPa, the values are in bar (#25) --- */
+    {
+        static const int press[] = { 318, 322, 325 };
+        for (size_t i = 0; i < sizeof(press) / sizeof(press[0]); i++) {
+            char topic[96];
+            snprintf(points, sizeof(points),
+                     "[{\"ecu\":1664,\"did\":%d,\"len\":9,\"enabled\":true,"
+                     "\"interval\":60,\"mode\":\"flat\",\"topic\":\"\",\"ha\":true}]",
+                     press[i]);
+            reset(points, "open3e-vent/cmnd", "flat");
+            ha_disco_publish_all();
+            snprintf(topic, sizeof(topic),
+                     "homeassistant/sensor/open3e_112233/680_%d_Actual/config", press[i]);
+            m = find(topic);
+            cJSON *j = m ? cJSON_Parse(m->payload) : NULL;
+            const cJSON *u = j ? cJSON_GetObjectItem(j, "unit_of_measurement") : NULL;
+            const cJSON *dc = j ? cJSON_GetObjectItem(j, "device_class") : NULL;
+            ok("pressure sensor is announced in bar",
+               cJSON_IsString(u) && strcmp(u->valuestring, "bar") == 0,
+               cJSON_IsString(u) ? u->valuestring : topic);
+            ok("and keeps the pressure device class",
+               cJSON_IsString(dc) && strcmp(dc->valuestring, "pressure") == 0, NULL);
+            cJSON_Delete(j);
+        }
+    }
+
     /* --- an operator's range narrows the number, in HA's own min/max --- */
     reset("[{\"ecu\":1664,\"did\":533,\"len\":2,\"enabled\":true,\"interval\":60,"
           "\"mode\":\"flat\",\"topic\":\"\",\"ha\":true,"

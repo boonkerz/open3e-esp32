@@ -248,6 +248,7 @@ def main() -> int:
     dps = json.loads((src / "Open3Edatapoints.json").read_text(encoding="utf-8"))
     fixed = db_overrides.apply_to_json(dps)
     print(f"  overrides      {fixed['units']} units, "
+          f"{fixed['unit_fixes']} corrected units, "
           f"{fixed['sensor_error']} sensor error enums")
     vars_ = json.loads((src / "Open3EdatapointsVariants.json").read_text(encoding="utf-8"))
     enums = load_enums(src / "Open3Eenums.py")
