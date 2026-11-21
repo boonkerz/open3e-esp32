@@ -13,6 +13,10 @@ bis dahin auf der Flash-Seite lag.
 
 ### Hinzugefügt
 
+- **Dateien am Release.** Jedes Release trägt jetzt automatisch das
+  Update-Paket, die Anwendung, das Storage-Abbild, ein Factory-Abbild und
+  `SHA256SUMS`, dauerhaft und ohne Anmeldung abrufbar (Diskussion #8).
+
 - **Steuerpunkte aus dem Reiter Anlage wählen.** Die Karte „Steuern" bietet
   je erkanntem Heizkreis Kennlinie, Raumtemperatur-Sollwerte und Betriebsart
   an, dazu Warmwasser-Solltemperatur und -Betriebsart, und nimmt sie mit

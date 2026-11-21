@@ -1462,8 +1462,11 @@ durch:
    Stunde nimmt das Gerät kein Update an.
 2. **Update wählen.** Entweder *Nach Update suchen* (das Gerät fragt die
    Flash-Seite nach der stabilen Version oder dem Entwicklungsstand) oder die
-   Datei `open3e-update.bin` hochladen. Wer selbst baut, erzeugt sie mit
-   `make package`.
+   Datei `open3e-update.bin` hochladen. Sie hängt an jedem
+   [Release](https://github.com/boonkerz/open3e-esp32/releases) als
+   `open3e-gateway-<Version>-update.bin`, neben der Anwendung allein, dem
+   Storage-Abbild, einem Factory-Abbild für die Erstinstallation per Kabel
+   und `SHA256SUMS`. Wer selbst baut, erzeugt sie mit `make package`.
 3. **Einspielen.** Zwei bis drei Minuten, danach lädt die Seite von selbst
    neu.
 

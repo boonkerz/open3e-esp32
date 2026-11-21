@@ -24,3 +24,5 @@ managed_components/
 
 # Playwright-MCP legt hier Screenshots und Snapshots ab.
 .playwright-mcp/
+# release assets collected by tools/release_assets.py
+dist/
