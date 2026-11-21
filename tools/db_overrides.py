@@ -7,7 +7,7 @@ it: units, and the enumeration behind a sensor's error byte. Both matter here
 because Home Assistant builds its entity out of them -- a value with no unit
 gets no device class, no statistics and no place on a dashboard.
 
-Two rules only, both narrow, both verified against the whole database rather
+Three rules only, all narrow, all verified against the whole database rather
 than guessed:
 
   * A leaf with no unit whose datapoint name says what it measures gets that
@@ -16,6 +16,12 @@ than guessed:
   * A subfield named `Error` becomes an enumeration over `SensorStates`. All
     twenty datapoints in the database with such a field are named `*Sensor`
     and carry a single byte there, so the rule cannot catch anything else.
+  * A `*PressureSensor` field labelled `hPa` is in bar. This is the one place
+    an existing unit is replaced, because it is plainly wrong: the numbers are
+    1.7 for a heating circuit and 4.6 / 9.6 for a refrigerant circuit, and
+    WaterPressureConfiguration (1721) carries the same scale as `bar`. Home
+    Assistant took the label at its word and showed "1,70 hPa" (#25). Three
+    datapoints: 318, 322, 325.
 
 Applied in two places that must not drift apart: gen_dpdb.py patches the JSON
 that becomes the firmware's database, and the fixture generators patch the
@@ -35,6 +41,11 @@ UNIT_RULES = [
     (re.compile(r"OperationHours$"),    "h"),
 ]
 
+# (datapoint name, unit as open3e has it) -> unit the value is really in.
+UNIT_FIXES = [
+    (re.compile(r"PressureSensor$"), "hPa", "bar"),
+]
+
 NUMERIC = {"O3EInt8", "O3EInt16", "O3EInt32", "O3EInt64",
            "O3EByteVal", "O3EFloat32"}
 
@@ -49,6 +60,14 @@ def unit_for(dp_name: str) -> str | None:
     return None
 
 
+def _fix_unit(dp_name: str, args: dict) -> bool:
+    for pattern, wrong, right in UNIT_FIXES:
+        if args.get("unit") == wrong and pattern.search(dp_name):
+            args["unit"] = right
+            return True
+    return False
+
+
 def _is_sensor_error(dp_name: str, sub_id: str, codec: str) -> bool:
     return (sub_id == SENSOR_ERROR_FIELD
             and codec == "O3EByteVal"
@@ -57,7 +76,7 @@ def _is_sensor_error(dp_name: str, sub_id: str, codec: str) -> bool:
 
 def apply_to_json(dps: dict) -> dict:
     """Patch Open3Edatapoints.json in place. Returns a count per change."""
-    stats = {"units": 0, "sensor_error": 0}
+    stats = {"units": 0, "unit_fixes": 0, "sensor_error": 0}
     for key, dp in dps.items():
         if not (key.isdigit() and isinstance(dp, dict)):
             continue
@@ -66,7 +85,9 @@ def apply_to_json(dps: dict) -> dict:
         subs = dp["args"].get("subTypes") if dp["codec"] == "O3EComplexType" else None
 
         if subs is None:
-            if unit and dp["codec"] in NUMERIC and not dp["args"].get("unit"):
+            if _fix_unit(name, dp["args"]):
+                stats["unit_fixes"] += 1
+            elif unit and dp["codec"] in NUMERIC and not dp["args"].get("unit"):
                 dp["args"]["unit"] = unit
                 stats["units"] += 1
             continue
@@ -78,6 +99,8 @@ def apply_to_json(dps: dict) -> dict:
                                **{k: v for k, v in sub["args"].items()
                                   if k in ("desc", "info", "acc")}}
                 stats["sensor_error"] += 1
+            elif _fix_unit(name, sub["args"]):
+                stats["unit_fixes"] += 1
             elif unit and sub["codec"] in NUMERIC and not sub["args"].get("unit"):
                 sub["args"]["unit"] = unit
                 stats["units"] += 1

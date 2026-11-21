@@ -70,6 +70,13 @@ bis dahin auf der Flash-Seite lag.
   Gerät blieb bis zum Stromlos-Machen weg. Der Task hat jetzt denselben
   Stack wie Poller und Kommando-Task, die Meldung hält ihre Puffer nicht
   mehr auf dem Stack.
+- **Druckwerte standen in Home Assistant als hPa** (#25, Mountaintiger05).
+  Anlagendruck (DID 318) sowie Saug- und Hochdruck des Verdichters (322,
+  325) tragen in der open3e-Datenbank die Einheit „hPa", die Werte sind
+  aber bar: Home Assistant zeigte „1,70 hPa" und rechnete beim Umstellen
+  auf bar zu 0 um. Die Datenbank meldet die drei jetzt als „bar". Kommt mit
+  dem nächsten `storage.bin`; danach die Discovery einmal neu senden lassen
+  (Gerät neu starten), damit Home Assistant die Einheit übernimmt.
 
 ## 0.3.0 — 2026-11-11
 
