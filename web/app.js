@@ -615,29 +615,34 @@ function parseLabels(text) {
 /* "10..60", "..60", "10.." or "Comfort: 10..60" -> {"*": {min, max}} or by field.
    Two dots rather than a dash, so a negative bound stays readable. */
 function parseRange(text) {
-  const t = text.trim();
-  if (!t) return undefined;
-  let field = "*", body = t;
-  const colon = t.indexOf(":");
-  if (colon > 0) {
-    field = t.slice(0, colon).trim();
-    body = t.slice(colon + 1);
+  /* Several fields of one datapoint, each with its own limits:
+     "Gradient: 0.2..3.5; Level: -13..40". */
+  const parts = text.split(";").map((x) => x.trim()).filter(Boolean);
+  if (!parts.length) return undefined;
+  const out = {};
+  for (const t of parts) {
+    let field = "*", body = t;
+    const colon = t.indexOf(":");
+    if (colon > 0) {
+      field = t.slice(0, colon).trim();
+      body = t.slice(colon + 1);
+    }
+    const m = body.trim().match(/^(-?\d+(?:[.,]\d+)?)?\s*\.\.\s*(-?\d+(?:[.,]\d+)?)?$/);
+    if (!m || (m[1] === undefined && m[2] === undefined) || field === "") return undefined;
+    const r = {};
+    if (m[1] !== undefined) r.min = Number(m[1].replace(",", "."));
+    if (m[2] !== undefined) r.max = Number(m[2].replace(",", "."));
+    if (r.min !== undefined && r.max !== undefined && r.min > r.max) return undefined;
+    out[field] = r;
   }
-  const m = body.trim().match(/^(-?\d+(?:[.,]\d+)?)?\s*\.\.\s*(-?\d+(?:[.,]\d+)?)?$/);
-  if (!m || (m[1] === undefined && m[2] === undefined) || field === "") return undefined;
-  const r = {};
-  if (m[1] !== undefined) r.min = Number(m[1].replace(",", "."));
-  if (m[2] !== undefined) r.max = Number(m[2].replace(",", "."));
-  if (r.min !== undefined && r.max !== undefined && r.min > r.max) return undefined;
-  return { [field]: r };
+  return out;
 }
 function formatRange(range) {
   if (!range) return "";
-  const field = Object.keys(range)[0];
-  if (!field) return "";
-  const r = range[field] || {};
-  const body = `${r.min ?? ""}..${r.max ?? ""}`;
-  return field === "*" ? body : `${field}: ${body}`;
+  return Object.entries(range).map(([field, r]) => {
+    const body = `${(r || {}).min ?? ""}..${(r || {}).max ?? ""}`;
+    return field === "*" ? body : `${field}: ${body}`;
+  }).join("; ");
 }
 function formatLabels(labels) {
   if (!labels) return "";
@@ -1795,6 +1800,7 @@ function initApp() {
   }
   $("plant-probe").onclick = () => probePlant();
   $("plant-ha-points").onclick = (e) => plantHaPoints(e.currentTarget);
+  $("plant-ctl-add").onclick = (e) => plantCtlAdd(e.currentTarget);
   $("plant-ha-card").onclick = (e) => plantHaCard(e.currentTarget);
   /* navigator.clipboard exists only on https or localhost; the gateway is
      plain http on the LAN, so the old selection-based copy is the real path. */
@@ -2821,8 +2827,125 @@ function plantFormat(slot, v) {
   return `${fmtDe(x, d)}${slot.unit ? " " + slot.unit : ""}`;
 }
 
+/* ---- control points of the plant ---- */
+
+/* What is worth a control in Home Assistant, by part of the plant. A short
+   list on purpose: 161 datapoints of a Vitocal are marked writable, most of
+   them time schedules and service parameters nobody wants as a slider. Limits
+   by field, because the database only knows the width of the field. */
+const ROOM_RANGE = { Comfort: { min: 10, max: 30 }, Standard: { min: 10, max: 30 },
+                     Reduced: { min: 10, max: 30 } };
+const PLANT_CTL_CIRCUIT = [
+  { did: (i) => 880 + i, label: "Heizkennlinie (Neigung, Niveau)",
+    range: { Gradient: { min: 0.2, max: 3.5 }, Level: { min: -13, max: 40 } } },
+  { did: (i) => 424 + 2 * i, label: "Raumtemperatur-Sollwerte", range: ROOM_RANGE },
+  { did: (i) => 1415 + i, label: "Betriebsart" },
+];
+const PLANT_CTL_DHW = [
+  { did: () => 396, label: "Warmwasser-Solltemperatur", range: { "*": { min: 10, max: 60 } } },
+  { did: () => 531, label: "Warmwasser-Betriebsart" },
+];
+const plantCtlAcc = {};    /* did -> writable according to the database */
+
+async function plantCtlWritable(did) {
+  if (!(did in plantCtlAcc)) {
+    try {
+      const d = await api(`/api/datapoint?did=${did}`);
+      plantCtlAcc[did] = /w/.test((d.args && d.args.acc) || "");
+    } catch { return false; }
+  }
+  return plantCtlAcc[did];
+}
+
+async function renderPlantControls(p) {
+  const list = $("plant-ctl-list");
+  const gen = ++renderPlantControls.gen;
+  if (!p || !p.probed || !p.roles.indoor) {
+    list.innerHTML = "";
+    $("plant-ctl-add").disabled = true;
+    $("plant-ctl-msg").textContent = p ? "Erst die Anlage erkennen." : "";
+    return;
+  }
+  const dev = p.roles.indoor;
+  const groups = p.circuits.map((c) => ({
+    title: `Heizkreis ${c.n}${c.name ? ` „${c.name}“` : ""}`,
+    items: PLANT_CTL_CIRCUIT.map((t) => ({ ...t, did: t.did(c.n - 1) })),
+  }));
+  if (p.dhw) {
+    groups.push({ title: "Warmwasser", items: PLANT_CTL_DHW.map((t) => ({ ...t, did: t.did() })) });
+  }
+  const frag = document.createDocumentFragment();
+  let offered = 0;
+  for (const g of groups) {
+    const rows = [];
+    for (const it of g.items) {
+      const hit = dev.dids.find((x) => x[0] === it.did);
+      if (!hit || !await plantCtlWritable(it.did)) continue;
+      const cur = selection.get(pointKey(dev.addr, it.did));
+      const ready = cur && cur.enabled && cur.ha;
+      const box = el("input", { type: "checkbox", checked: !ready, disabled: !!ready });
+      box.dataset.did = it.did;
+      box.dataset.len = hit[1];
+      box.plantCtl = it;
+      rows.push(el("label", { className: "small", style: "display:block;margin:4px 0" }, box,
+        el("span", { textContent: ` ${it.label} ` }),
+        el("span", { className: "muted", textContent: `DID ${it.did}${ready ? " — schon in der Auswahl" : ""}` })));
+      if (!ready) offered++;
+    }
+    if (rows.length) {
+      frag.append(el("div", { style: "margin:10px 0 2px;font-weight:600", textContent: g.title }), ...rows);
+    }
+  }
+  if (gen !== renderPlantControls.gen) return;    /* a newer render overtook this one */
+  list.innerHTML = "";
+  list.append(frag);
+  $("plant-ctl-add").disabled = !offered;
+  $("plant-ctl-msg").textContent = list.children.length
+    ? (offered ? "" : "Alles schon in der Auswahl.")
+    : "Die Datenbank führt an dieser Anlage keinen dieser Punkte als schreibbar.";
+  api("/api/status").then((s) => { $("plant-ctl-write").hidden = !!s.writeEnabled; }).catch(() => {});
+}
+renderPlantControls.gen = 0;
+
+async function plantCtlAdd(btn) {
+  const p = plantProfile;
+  if (!p || !p.roles.indoor) return;
+  const dev = p.roles.indoor;
+  btn.disabled = true;
+  let added = 0, changed = 0;
+  try {
+    for (const box of $("plant-ctl-list").querySelectorAll("input:checked:not(:disabled)")) {
+      const it = box.plantCtl;
+      const key = pointKey(dev.addr, it.did);
+      const cur = selection.get(key);
+      if (cur) {
+        /* Limits somebody set by hand stay. */
+        cur.enabled = true;
+        cur.ha = true;
+        if (!cur.range && it.range) cur.range = it.range;
+        changed++;
+      } else {
+        selection.set(key, { ecu: dev.addr, did: it.did, len: Number(box.dataset.len) || 0,
+                             enabled: true, interval: 60, mode: "json", topic: "", ha: true,
+                             ...(it.range ? { range: it.range } : {}) });
+        added++;
+      }
+    }
+    await api("/api/points", { method: "PUT", body: JSON.stringify([...selection.values()]) });
+    await loadPoints();
+    $("plant-ctl-msg").textContent = `${added} aufgenommen, ${changed} für Home Assistant freigeschaltet.`;
+  } catch (e) {
+    $("plant-ctl-msg").textContent = e.message;
+  }
+  await renderPlantControls(p);
+  if (added || changed) {
+    $("plant-ctl-msg").textContent = `${added} aufgenommen, ${changed} für Home Assistant freigeschaltet.`;
+  }
+}
+
 function renderPlant() {
   plantProfile = derivePlant();
+  renderPlantControls(plantProfile);
   const prof = $("plant-profile");
   prof.innerHTML = "";
   const host = $("plant-svg");

@@ -13,6 +13,12 @@ bis dahin auf der Flash-Seite lag.
 
 ### Hinzugefügt
 
+- **Steuerpunkte aus dem Reiter Anlage wählen.** Die Karte „Steuern" bietet
+  je erkanntem Heizkreis Kennlinie, Raumtemperatur-Sollwerte und Betriebsart
+  an, dazu Warmwasser-Solltemperatur und -Betriebsart, und nimmt sie mit
+  Grenzen und Home-Assistant-Häkchen in die Auswahl. Die Spalte „Grenzen"
+  fasst dafür mehrere Felder (`Gradient: 0.2..3.5; Level: -13..40`).
+
 - **Reiter „Anlage".** Erkennt die Konfiguration einer Wärmepumpe aus
   Scan und einer einmaligen Sondierung (Rollen der Steuergeräte,
   Sensorstatus `not_available` gegen `no_error`, Konfigurations-Datenpunkte)

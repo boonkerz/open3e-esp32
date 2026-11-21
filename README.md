@@ -885,8 +885,14 @@ Neigung und Niveau eines Heizkreises stehen in `MixerOneCircuitCentralHeatingCur
 `rw`. Mit „Schreiben freigeben" entstehen in Home Assistant Regler dafür.
 Die Datenbank kennt nur die Feldbreite, also Grenzen setzen: in der Spalte
 „Grenzen" etwa `Gradient: 0.2..3.5` für die Neigung, und für das Niveau
-`Level: -13..40`. Das dritte Feld `BasePoint` zeigt die App nicht; es bleibt
-besser, wie es ist.
+`Level: -13..40`, beides in einem Feld mit Semikolon getrennt
+(`Gradient: 0.2..3.5; Level: -13..40`). Das dritte Feld `BasePoint` zeigt die
+App nicht; es bleibt besser, wie es ist.
+
+Einfacher geht es im Reiter *Anlage*: die Karte **Steuern** listet je
+erkanntem Heizkreis Kennlinie, Raumtemperatur-Sollwerte und Betriebsart, dazu
+Warmwasser-Solltemperatur und -Betriebsart, und übernimmt die angehakten
+Punkte mit Home-Assistant-Häkchen und Grenzen in die Auswahl.
 
 **Die Linie als Bild.** Zwei Zahlen sagen wenig, solange man die Linie nicht
 sieht, die sie beschreiben. Wer die Heizkennlinie eines Kreises auswählt,

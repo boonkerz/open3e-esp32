@@ -260,6 +260,28 @@
     <div id="plant-svg" class="plant"></div>
     <p id="plant-note" class="small muted" style="margin:10px 0 0"></p>
   </div>
+  <div class="card" id="card-plant-ctl">
+    <h2>Steuern</h2>
+    <p class="hint">Was sich an dieser Anlage einstellen lässt, nach Heizkreis
+      und Warmwasser sortiert. Angehakte Datenpunkte kommen in die Auswahl, mit
+      Home-Assistant-Häkchen und Grenzen; dort erscheinen sie als Regler. Die
+      Kennlinie bringt ihr Bild mit. Bedient wird in Home Assistant oder per
+      MQTT, nicht hier.</p>
+    <div class="warnbox" id="plant-ctl-write" hidden>
+      <b>Der Schreibzugriff ist aus.</b> Die Punkte werden aufgenommen und
+      angezeigt, Regler entstehen aber erst mit „Schreiben freigeben" unter
+      <i>Einstellungen → Bus</i>.
+    </div>
+    <div id="plant-ctl-list"></div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn" id="plant-ctl-add" style="flex:0 0 auto" disabled>In die Auswahl übernehmen</button>
+      <span id="plant-ctl-msg" class="small muted" style="align-self:center"></span>
+    </div>
+    <p class="small muted" style="margin:10px 0 0">Die Grenzen sind vorsichtig
+      gewählt und lassen sich unter <i>Datenpunkte</i> ändern. An einer Vitocal
+      250-A geprüft ist das Schreiben der Kennlinie; die übrigen Punkte führt
+      die open3e-Datenbank als schreibbar.</p>
+  </div>
   <div class="card" id="card-plant-ha">
     <h2>Home Assistant</h2>
     <p class="hint">Dasselbe Bild als <b>Picture-Elements-Karte</b>: die Werte
