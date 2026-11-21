@@ -50,6 +50,13 @@ bis dahin auf der Flash-Seite lag.
 
 ### Behoben
 
+- **Update sah wie fehlgeschlagen aus.** Nach Firmware-Update, Datenbank-Update
+  und Wiederherstellen lud die Seite blind nach 20 Sekunden neu. Braucht das
+  Gerät länger ins WLAN, stand dort „nicht erreichbar"; wer daraufhin den
+  Strom wegnahm, löste während des einminütigen Probelaufs den Rollback aus
+  und hatte wieder die alte Firmware. Die Seite wartet jetzt, bis das Gerät
+  antwortet und die Firmware bestätigt ist, zeigt so lange an, was gerade
+  passiert, und lädt erst dann neu. Hinweis in Karte 3 und in der README.
 - **Scheinbare Bitfehler „Code 0".** Ein Fehlerinterrupt ohne Inhalt im
   Fehlerregister des Controllers wurde als Bitfehler beim Senden gezählt,
   obwohl das Frame durchging und der Fehlerzähler bei null blieb. Solche

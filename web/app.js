@@ -14,6 +14,52 @@ const el = (tag, props = {}, ...kids) => {
   return n;
 };
 
+/* After anything that restarts the device: wait until it answers again and
+   only then reload, saying what is going on meanwhile.
+
+   The page used to reload blindly after 20 seconds. A device that needs
+   longer -- it scans every channel for the strongest access point, and in a
+   boiler room the signal is weak -- then showed the browser's "not reachable"
+   page, which looks exactly like a failed update. The natural reaction is to
+   cut the power, and that is the one thing that must not happen: a new
+   firmware runs on trial for a minute, and a reset inside that minute makes
+   the bootloader go back to the old one. */
+function waitForRestart(msgEl, done, trial = false) {
+  const t0 = Date.now();
+  const say = (text) => { if (msgEl) msgEl.textContent = text; };
+  const tick = async () => {
+    const s = Math.round((Date.now() - t0) / 1000);
+    let st = null;
+    /* Not before the device has had time to go down. */
+    if (s >= 6) {
+      try {
+        const res = await fetch("/api/status", { cache: "no-store",
+                                                 signal: AbortSignal.timeout(2500) });
+        if (res.ok) st = await res.json();
+      } catch { /* still restarting */ }
+    }
+    if (st && !(trial && st.pendingVerify)) {
+      say(`${done} Das Gerät läuft wieder, die Seite lädt neu.`);
+      setTimeout(() => location.reload(), 1500);
+      return;
+    }
+    if (st) {
+      say(`${done} Die neue Firmware läuft auf Probe und bestätigt sich nach einer `
+        + `Minute selbst (${s} s). Bis dahin nicht ausschalten oder neu starten, `
+        + "sonst kehrt das Gerät zur alten Version zurück.");
+    } else if (s < 180) {
+      say(`${done} Das Gerät startet neu (${s} s). Das kann bis zu zwei Minuten `
+        + "dauern, bitte nicht ausschalten.");
+    } else {
+      say(`${done} Das Gerät antwortet seit ${Math.round(s / 60)} Minuten nicht. `
+        + "Die Seite versucht es weiter; hat sich die Adresse geändert, hilft "
+        + "http://open3e.local.");
+    }
+    setTimeout(tick, 3000);
+  };
+  tick();
+}
+
 async function api(path, opts = {}) {
   if (opts.body) opts.headers = { "Content-Type": "application/json", ...opts.headers };
   const res = await fetch(path, opts);
@@ -2018,10 +2064,8 @@ function initApp() {
       try { body = JSON.parse(xhr.responseText); } catch { /* ignore */ }
       if (xhr.status >= 200 && xhr.status < 300) {
         bar.style.width = "100%";
-        msg.textContent = "Übertragen. Das Gerät startet neu – die Seite lädt "
-                        + "in etwa 20 Sekunden von selbst neu.";
         toast("Update eingespielt, Neustart läuft.", "ok");
-        setTimeout(() => location.reload(), 20000);
+        waitForRestart(msg, "Übertragen.", true);
       } else {
         msg.textContent = body.error || `Fehlgeschlagen (HTTP ${xhr.status})`;
         toast(msg.textContent, "err");
@@ -2102,9 +2146,7 @@ function initApp() {
     $("st-upload").disabled = true;
     await upload("/api/storage", f, $("st-bar"), $("st-msg"), (ok, body, status) => {
       if (ok) {
-        $("st-msg").textContent = "Geschrieben. Neustart läuft – die Seite lädt "
-                                + "in etwa 20 Sekunden neu.";
-        setTimeout(() => location.reload(), 20000);
+        waitForRestart($("st-msg"), "Geschrieben.");
       } else {
         $("st-msg").textContent = body.error || `Fehlgeschlagen (HTTP ${status})`;
         $("st-upload").disabled = false;
@@ -2186,10 +2228,8 @@ function initApp() {
     $("imp-msg").textContent = "Wird eingespielt…";
     await upload("/api/import", f, null, null, (ok, body, status) => {
       if (ok) {
-        $("imp-msg").textContent = "Eingespielt. Neustart läuft – die Seite lädt "
-                                 + "in etwa 20 Sekunden neu.";
         toast("Wiederhergestellt, Neustart läuft.", "ok");
-        setTimeout(() => location.reload(), 20000);
+        waitForRestart($("imp-msg"), "Eingespielt.");
       } else {
         $("imp-msg").textContent = body.error || `Fehlgeschlagen (HTTP ${status})`;
         toast($("imp-msg").textContent, "err");

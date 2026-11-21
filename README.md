@@ -1294,6 +1294,15 @@ Das Gerät hängt im Heizungsraum, deshalb zwei Absicherungen:
    nächsten Reset wieder die vorherige. Der Statusbereich zeigt an, solange der
    Probelauf offen ist.
 
+> **Nach dem Hochladen zwei Minuten nicht ausschalten und nicht neu starten.**
+> Der Neustart selbst kann über eine Minute dauern: das Gerät sucht alle
+> Kanäle nach dem stärksten Access Point ab, und im Heizungsraum ist der
+> Empfang selten gut. Wer in dieser Zeit den Stecker zieht, weil die Seite
+> nicht antwortet, löst genau den Rollback aus und hat danach wieder die alte
+> Version. Die Seite wartet deshalb selbst, bis das Gerät antwortet und die
+> Firmware bestätigt ist, und lädt erst dann neu. Welche Version läuft, steht
+> danach oben auf der Statusseite.
+
 Vor dem ersten Byte wird geprüft, ob die Datei überhaupt ein ESP32-Abbild ist
 (Magic `0xE9`) — eine falsch ausgewählte Datei kann die Reservepartition also
 nicht halb beschreiben.
