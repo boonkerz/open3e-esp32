@@ -14,6 +14,7 @@ idf_component_register(
         "e3_scan.c"
         "em380.c"
         "ha_disco.c"
+        "heat_curve.c"
         "httpd_api.c"
         "isotp.c"
         "knx.c"

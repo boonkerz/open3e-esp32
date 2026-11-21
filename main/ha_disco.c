@@ -899,6 +899,57 @@ static void plant_image_config(const mqtt_cfg_t *cfg, const char *dev_id,
     o3e_buf_free(&b);
 }
 
+/* `text` Base64-coded, retained on `topic`. */
+static void pub_base64(const char *topic, const char *text)
+{
+    size_t len = strlen(text);
+    size_t need = 0;
+    mbedtls_base64_encode(NULL, 0, &need, (const unsigned char *)text, len);
+    char *b64 = malloc(need + 1);
+    if (!b64) {
+        return;
+    }
+    size_t olen = 0;
+    if (mbedtls_base64_encode((unsigned char *)b64, need, &olen,
+                              (const unsigned char *)text, len) == 0) {
+        b64[olen] = '\0';
+        mqtt_pub_raw(topic, b64, true);
+    }
+    free(b64);
+}
+
+void ha_disco_curve_image(int circuit, const char *name, const char *svg)
+{
+    mqtt_cfg_t cfg;
+    mqtt_cfg_get(&cfg);
+    if (!cfg.enabled || !mqtt_pub_connected() || circuit < 1 || circuit > 8) {
+        return;
+    }
+    char dev_id[32];
+    device_id(dev_id, sizeof(dev_id));
+    char topic[CFG_TOPIC_MAX + 16];
+    snprintf(topic, sizeof(topic), "%s/curve/%d", cfg.base_topic, circuit);
+    char t64[CFG_TOPIC_MAX + 24];
+    snprintf(t64, sizeof(t64), "%s/b64", topic);
+    char object[16];
+    snprintf(object, sizeof(object), "curve_%d", circuit);
+    if (!svg) {
+        mqtt_pub_raw(topic, "", true);
+        mqtt_pub_raw(t64, "", true);
+        plant_image_config(&cfg, dev_id, object, "", topic, true);
+        return;
+    }
+    mqtt_pub_raw(topic, svg, true);
+    pub_base64(t64, svg);
+    char label[96];
+    if (name && name[0]) {
+        snprintf(label, sizeof(label), "Heizkennlinie %s", name);
+    } else {
+        snprintf(label, sizeof(label), "Heizkennlinie Heizkreis %d", circuit);
+    }
+    plant_image_config(&cfg, dev_id, object, label, topic, false);
+}
+
 void ha_disco_plant_live(const char *svg)
 {
     mqtt_cfg_t cfg;
@@ -918,21 +969,9 @@ void ha_disco_plant_live(const char *svg)
     mqtt_pub_raw(topic, copy, true);
     /* The same picture Base64-coded on <base>/plant/live/b64: Grafana's image
      * panels take a data URL but not raw SVG text (lingej, #22). */
-    size_t len = strlen(copy);
-    size_t need = 0;
-    mbedtls_base64_encode(NULL, 0, &need, (const unsigned char *)copy, len);
-    char *b64 = malloc(need + 1);
-    if (b64) {
-        size_t olen = 0;
-        if (mbedtls_base64_encode((unsigned char *)b64, need, &olen,
-                                  (const unsigned char *)copy, len) == 0) {
-            b64[olen] = '\0';
-            char t64[CFG_TOPIC_MAX + 24];
-            snprintf(t64, sizeof(t64), "%s/plant/live/b64", cfg.base_topic);
-            mqtt_pub_raw(t64, b64, true);
-        }
-        free(b64);
-    }
+    char t64[CFG_TOPIC_MAX + 24];
+    snprintf(t64, sizeof(t64), "%s/plant/live/b64", cfg.base_topic);
+    pub_base64(t64, copy);
     free(copy);
     plant_image_config(&cfg, dev_id, "plant_live", "Anlagenschema live", topic, false);
 }

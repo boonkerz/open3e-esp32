@@ -11,6 +11,7 @@
 
 #include "app_config.h"
 #include "ha_disco.h"
+#include "heat_curve.h"
 #include "mqtt_pub.h"
 #include "o3e_json.h"
 #include "poller.h"
@@ -228,6 +229,137 @@ static bool render_live(bool *comp_running, bool *pump_running)
     return ok;
 }
 
+/* ------------------------------------------------------------------ */
+/* Heating curves                                                       */
+/*
+ * Whoever selects a circuit's heating curve (DID 880..887) for publishing
+ * gets its picture with it: the two numbers are what one sets, the line is
+ * what they mean. Independent of the schematic -- no probe, no stored SVG,
+ * the selection alone decides, and the controller address comes from it.
+ */
+#define DID_CURVE          880    /* +1 per circuit: {Gradient, Level, BasePoint} */
+#define CURVE_CIRCUITS     8
+#define DID_ROOM_SETPOINT  424    /* +2 per circuit: {Comfort, Standard, Reduced} */
+#define DID_CIRCUIT_NAME   627    /* +1 per circuit */
+#define DID_FLOW_TARGET    987    /* +1, circuits one to four: flow setpoint in force */
+#define DID_FLOW_LIMITS    1192   /* +1 per circuit: {Minimum, Maximum} */
+#define DID_ROOM_CURRENT   1643   /* +1, circuits one to four: room setpoint in force */
+#define DID_OUTSIDE        274    /* {Actual} */
+#define DID_OUTSIDE_DAMPED 2457   /* {DampedActual}: what the controller works with */
+/* A picture that did not change is not sent again -- except this often, so a
+ * broker that lost its retained messages gets them back. In render cycles. */
+#define CURVE_REFRESH      30
+
+static uint32_t s_curve_hash[CURVE_CIRCUITS];
+static uint8_t  s_curve_age[CURVE_CIRCUITS];
+static bool     s_curve_swept;
+
+static uint32_t fnv1a(const char *s)
+{
+    uint32_t h = 2166136261u;
+    for (; *s; s++) {
+        h = (h ^ (uint8_t)*s) * 16777619u;
+    }
+    return h ? h : 1;   /* 0 means "nothing published" */
+}
+
+/* Which controller each selected curve belongs to; 0 where none is selected. */
+static void curve_selection(uint16_t ecu_of[CURVE_CIRCUITS])
+{
+    memset(ecu_of, 0, sizeof(uint16_t) * CURVE_CIRCUITS);
+    char *raw = app_config_read_file(CFG_POINTS_PATH);
+    cJSON *root = raw ? cJSON_Parse(raw) : NULL;
+    free(raw);
+    const cJSON *p;
+    cJSON_ArrayForEach(p, root) {
+        const cJSON *jd = cJSON_GetObjectItemCaseSensitive(p, "did");
+        const cJSON *je = cJSON_GetObjectItemCaseSensitive(p, "ecu");
+        const cJSON *on = cJSON_GetObjectItemCaseSensitive(p, "enabled");
+        if (!cJSON_IsNumber(jd) || !cJSON_IsNumber(je) || cJSON_IsFalse(on)) {
+            continue;
+        }
+        int did = (int)jd->valuedouble;
+        if (did >= DID_CURVE && did < DID_CURVE + CURVE_CIRCUITS) {
+            ecu_of[did - DID_CURVE] = (uint16_t)je->valuedouble;
+        }
+    }
+    cJSON_Delete(root);
+}
+
+static void curve_render(int n, uint16_t ecu)
+{
+    heat_curve_t c = { 0 };
+    cJSON *curve = read_value(ecu, (uint16_t)(DID_CURVE + n));
+    bool have = curve && slot_number(curve, "Gradient", &c.gradient)
+                && slot_number(curve, "Level", &c.level);
+    cJSON_Delete(curve);
+    if (!have) {
+        /* Not readable right now: the last picture stays. */
+        return;
+    }
+    /* The line is drawn for the room setpoint in force, so that at night it
+     * is the reduced line the plant follows and the point sits on it. Where
+     * the controller does not say (circuits five to eight, or a circuit that
+     * is off and reports nothing sensible), the normal setpoint stands in. */
+    double x;
+    bool have_room = n < 4 && read_number(ecu, (uint16_t)(DID_ROOM_CURRENT + n), NULL, &x)
+                     && x >= 5.0 && x <= 35.0;
+    if (!have_room) {
+        have_room = read_number(ecu, (uint16_t)(DID_ROOM_SETPOINT + 2 * n), "Standard", &x)
+                    && x >= 5.0 && x <= 35.0;
+    }
+    c.room = have_room ? x : 20.0;
+
+    double lo, hi;
+    cJSON *limits = read_value(ecu, (uint16_t)(DID_FLOW_LIMITS + n));
+    if (limits && slot_number(limits, "Minimum", &lo)
+        && slot_number(limits, "Maximum", &hi) && hi > lo) {
+        c.have_limits = true;
+        c.flow_min = lo;
+        c.flow_max = hi;
+    }
+    cJSON_Delete(limits);
+    c.have_outside = read_number(ecu, DID_OUTSIDE_DAMPED, "DampedActual", &c.outside)
+                     || read_number(ecu, DID_OUTSIDE, "Actual", &c.outside);
+    /* A circuit that is not heating reports 0 here; then the formula's value
+     * is the more useful thing to show, and the picture says which it is. */
+    c.have_flow = c.have_outside && n < 4
+                  && read_number(ecu, (uint16_t)(DID_FLOW_TARGET + n), NULL, &c.flow)
+                  && c.flow > 5.0;
+
+    cJSON *jname = read_value(ecu, (uint16_t)(DID_CIRCUIT_NAME + n));
+    c.name = cJSON_IsString(jname) ? jname->valuestring : NULL;
+
+    char *svg = heat_curve_svg(&c);
+    if (svg) {
+        uint32_t h = fnv1a(svg);
+        if (h != s_curve_hash[n] || ++s_curve_age[n] >= CURVE_REFRESH) {
+            ha_disco_curve_image(n + 1, c.name, svg);
+            s_curve_hash[n] = h;
+            s_curve_age[n] = 0;
+        }
+        free(svg);
+    }
+    cJSON_Delete(jname);
+}
+
+static void curve_tick(void)
+{
+    uint16_t ecu_of[CURVE_CIRCUITS];
+    curve_selection(ecu_of);
+    for (int n = 0; n < CURVE_CIRCUITS; n++) {
+        if (ecu_of[n]) {
+            curve_render(n, ecu_of[n]);
+        } else if (s_curve_hash[n] || !s_curve_swept) {
+            /* Deselected -- or deselected while the device was off, which
+             * only a sweep after start can know about. */
+            ha_disco_curve_image(n + 1, NULL, NULL);
+            s_curve_hash[n] = 0;
+        }
+    }
+    s_curve_swept = true;
+}
+
 static void plant_task(void *arg)
 {
     (void)arg;
@@ -237,6 +369,9 @@ static void plant_task(void *arg)
         cycle++;
         if (!mqtt_pub_connected()) {
             continue;
+        }
+        if (cycle % LIVE_EVERY == 0) {
+            curve_tick();
         }
         /* No picture stored, nothing to keep in step. */
         FILE *f = fopen(CFG_WWW_DIR "/plant.svg", "rb");

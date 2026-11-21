@@ -37,4 +37,10 @@ void ha_disco_plant_state(bool compressor_running, bool pump_running);
  * them. The idle-circuit style is applied here like for the background. */
 void ha_disco_plant_live(const char *svg);
 
+/* A circuit's heating curve as a picture (heat_curve.c), next to the two
+ * numbers that set it: retained on <base>/curve/<n>, Base64-coded on
+ * <base>/curve/<n>/b64, announced as the image entity "Heizkennlinie <name>".
+ * `circuit` counts from 1. A NULL picture retracts all three. */
+void ha_disco_curve_image(int circuit, const char *name, const char *svg);
+
 #endif /* O3E_HA_DISCO_H */

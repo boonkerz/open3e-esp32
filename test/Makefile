@@ -6,8 +6,8 @@ LDLIBS  := -lcjson -lm
 SRC     := ../main/o3e_json.c ../main/o3e_db.c ../main/o3e_codec.c
 FLAT    := ../main/o3e_flatten.c
 
-.PHONY: all clean codec encode flatten isotp uds em380 collect hadisco contact knx topic sanitize
-all: codec encode flatten em380 isotp uds collect hadisco contact knx topic
+.PHONY: all clean codec encode flatten isotp uds em380 collect hadisco contact knx topic heatcurve sanitize
+all: codec encode flatten em380 isotp uds collect hadisco contact knx topic heatcurve
 
 build:
 	@mkdir -p build
@@ -26,6 +26,15 @@ build/test_collect: build test_collect.c ../main/collect_parse.c
 
 collect: build/test_collect
 	cd .. && test/build/test_collect test/collect_frames.txt
+
+build/test_heatcurve: build test_heatcurve.c ../main/heat_curve.c ../main/o3e_json.c
+	$(CC) $(CFLAGS) -o $@ test_heatcurve.c ../main/heat_curve.c ../main/o3e_json.c $(LDLIBS)
+
+heatcurve: build/test_heatcurve
+	./build/test_heatcurve build
+	@# A drawing that is not well-formed XML opens nowhere, and no string
+	@# comparison notices a truncated tag.
+	python3 -I -c "import sys, xml.dom.minidom as m; [m.parse(f) for f in sys.argv[1:]]" build/curve_floor.svg build/curve_radiator.svg build/curve_bare.svg
 
 build/test_contact: build test_contact.c ../main/contact.c
 	$(CC) $(CFLAGS) -o $@ test_contact.c ../main/contact.c

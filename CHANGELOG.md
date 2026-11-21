@@ -67,6 +67,12 @@ bis dahin auf der Flash-Seite lag.
   deshalb als schreibbar. Mit „Schreiben freigeben" entstehen Regler; Grenzen
   in der Datenpunkt-Tabelle setzen (`Gradient: 0.2..3.5`, `Level: -13..40`).
   Geprüft an Heizkreis 1 einer Anlage. Kommt mit dem nächsten `storage.bin`.
+- **Heizkennlinie als Bild.** Wer die Heizkennlinie eines Kreises auswählt,
+  bekommt ihr Diagramm dazu, gezeichnet wie in der App: Vorlauf über
+  Außentemperatur, Stützpunkte beschriftet, Vorlaufgrenzen des Kreises, der
+  aktuelle Betriebspunkt mit dem Sollwert der Anlage. Als SVG retained auf
+  `<Basis>/curve/<n>`, Base64-codiert auf `<Basis>/curve/<n>/b64`, in Home
+  Assistant per Discovery als Bild-Entität „Heizkennlinie <Kreis>".
 - **Favicon** für die Weboberfläche (#11, wunderbaum): zwei gegenläufige
   Leitungen mit Knoten in der Mitte, sein zweiter Vorschlag. Die Flash-Seite
   trägt dasselbe Symbol. Kommt mit dem nächsten `storage.bin`.

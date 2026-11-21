@@ -888,6 +888,31 @@ Die Datenbank kennt nur die Feldbreite, also Grenzen setzen: in der Spalte
 `Level: -13..40`. Das dritte Feld `BasePoint` zeigt die App nicht; es bleibt
 besser, wie es ist.
 
+**Die Linie als Bild.** Zwei Zahlen sagen wenig, solange man die Linie nicht
+sieht, die sie beschreiben. Wer die Heizkennlinie eines Kreises auswählt,
+bekommt deshalb ihr Bild dazu, so wie die App es zeichnet: Vorlauftemperatur
+über der Außentemperatur von +20 bis −30 °C, die sechs Stützpunkte
+beschriftet, die Vorlaufgrenzen des Kreises als Begrenzung. Dazu der Punkt,
+an dem die Anlage gerade steht, mit ihrem eigenen Vorlauf-Sollwert. Gezeichnet
+wird für den Raum-Sollwert, der gerade gilt, nachts also die abgesenkte Linie.
+
+| Topic | Inhalt |
+|---|---|
+| `<Basis>/curve/<n>` | das SVG, retained, `n` ist der Heizkreis ab 1 |
+| `<Basis>/curve/<n>/b64` | dasselbe Base64-codiert, für Grafana (`data:image/svg+xml;base64,` davor) |
+
+Mit Auto-Discovery erscheint es in Home Assistant als Bild-Entität
+„Heizkennlinie <Name des Kreises>" und lässt sich mit einer Bild-Karte neben
+die beiden Regler setzen. Es wird einmal pro Minute neu gerechnet und nur
+gesendet, wenn es sich geändert hat. Ein Diagramm zum Anfassen kann die
+Discovery nicht ausliefern; die Regler bleiben die Bedienung, das Bild zeigt
+die Wirkung. Wird der Datenpunkt abgewählt, verschwindet die Entität.
+
+Die Formel ist die, die Viessmann für seine witterungsgeführten Regelungen
+angibt. Sie trifft die Beschriftung der App (Neigung 0,2, Niveau 0, Raum
+23 °C: 24, 28 und 34 °C bei +20, 0 und −30 °C) und den Sollwert der Anlage
+selbst (27,2 °C bei 4,2 °C außen, gerechnet 27,24).
+
 Zugeordnet, aber über den Bus nicht schreibbar, an derselben Anlage geprüft:
 
 | Einstellung in der App | Datenpunkt | Schreiben |
