@@ -34,6 +34,7 @@ fixtures:
 	$(PY) tools/gen_em_fixtures.py -o test/em_fixtures.json
 
 test:
+	$(PY) -m unittest discover -s test -p test_gen_dpdb.py
 	$(MAKE) -C test all
 
 sanitize:
