@@ -28,6 +28,10 @@ bis dahin auf der Flash-Seite lag.
 
 ### Behoben
 
+- **E380-Definitionen in der Datenbank.** Der Datenbankgenerator bricht nun
+  bei fehlenden E3onCAN-Quellen, fehlendem `udsoncan` oder einer leeren
+  E380-Tabelle ab, statt eine Datenbank ohne E380-Frames zu erzeugen.
+
 - **Karte „Steuern": Häkchen, Name und Datenpunkt standen untereinander**
   statt in einer Zeile.
 - **Reiter „Anlage" an einem Gas-Brennwertgerät.** Der Durchflusssensor

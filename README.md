@@ -336,6 +336,17 @@ make setup          # Python-venv anlegen, open3e holen
 make db             # data/o3edb.bin erzeugen  (~1,6 MB)
 ```
 
+Unter Windows ohne `make` und mit aktiviertem Python-Environment:
+
+```powershell
+python -m pip install udsoncan
+python tools\fetch_open3e.py
+python tools\gen_dpdb.py -o data\o3edb.bin
+```
+
+Die Ausgabe muss **14 E380 frames** melden. Fehlen die E3onCAN-Quellen oder
+`udsoncan`, bricht die Erzeugung ab, statt eine Datenbank ohne E380 abzulegen.
+
 `make storage` ist nur nötig, wenn man das Ergebnis ohne ESP-IDF ansehen will —
 der Firmware-Build ruft `tools/build_fs.py` selbst auf.
 
