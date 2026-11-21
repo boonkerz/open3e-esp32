@@ -18,6 +18,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Attaching files to a release; everything else here only reads.
+    permissions:
+      contents: write
     # Same tag the firmware is developed against; a mismatch here would ship
     # something nobody has run.
     container: espressif/idf:v6.1
@@ -81,6 +84,30 @@ jobs:
           name: site-${{ steps.assemble.outputs.channel }}
           path: build/site
           retention-days: 30
+
+      # A tag also fills the release: the same binaries, under names that say
+      # which version they are, kept for good and downloadable without a
+      # login. The artifact above is gone after 30 days, and whoever wants an
+      # older version back should not have to build it (discussion #8).
+      - name: Release assets
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          . "$IDF_PATH/export.sh"
+          idf.py merge-bin -o "$PWD/build/factory.bin"
+          python3 tools/release_assets.py "${GITHUB_REF#refs/tags/v}" --factory build/factory.bin
+
+      # Creates the release for the tag, or adds to one made by hand. The
+      # notes are this version's section of CHANGELOG.md and replace whatever
+      # the release said before.
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            dist/*.bin
+            dist/SHA256SUMS
+          body_path: dist/NOTES.md
+          fail_on_unmatched_files: true
 
       # No deploy step: the web server sits on a home network, out of reach of
       # GitHub's runners, so it pulls the artifact above itself -- see
