@@ -139,6 +139,9 @@ typedef struct {
 
 bool app_config_init(void);          /* opens NVS and mounts LittleFS */
 bool app_config_fs_mounted(void);
+/* Mount the storage partition again after its contents were replaced
+ * underneath a filesystem that had been unregistered for it (ota.c). */
+bool app_config_fs_remount(void);
 
 void wifi_cfg_get(wifi_cfg_t *out);
 bool wifi_cfg_set(const wifi_cfg_t *in);

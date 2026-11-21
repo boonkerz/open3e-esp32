@@ -95,6 +95,20 @@ def main() -> int:
         total += src.stat().st_size
         print(f"  {off:>10}  {src.name:<24} {src.stat().st_size / 1024:8.0f} KiB")
 
+    # The update package and a note of what it is. Both sit beside the flash
+    # binaries, so the server's pull moves them with the channel and a device
+    # asking for an update never sees a description of a package that is not
+    # there yet.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import make_update
+    fw = (a.build / args["app"]["file"]).read_bytes()
+    pkg = make_update.pack(fw, (a.build / "storage.bin").read_bytes())
+    (bindir / "open3e-update.bin").write_bytes(pkg)
+    (bindir / "update.json").write_text(json.dumps(
+        {"version": make_update.app_version(fw), "size": len(pkg),
+         "channel": a.channel}) + "\n")
+    print(f"  {'':>10}  {'open3e-update.bin':<24} {len(pkg) / 1024:8.0f} KiB")
+
     out_manifest = a.out / f"manifest-{a.channel}.json"
     out_manifest.write_text(json.dumps(manifest(a.channel, ver, args), indent=2) + "\n")
 

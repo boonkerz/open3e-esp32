@@ -106,6 +106,27 @@ bool app_config_init(void)
 
 bool app_config_fs_mounted(void) { return fs_ok; }
 
+bool app_config_fs_remount(void)
+{
+    /* No formatting here: a partition that does not mount after an image was
+     * written to it is a failed write, and formatting would turn "try again"
+     * into "everything is gone, including the database". */
+    esp_vfs_littlefs_conf_t conf = {
+        .base_path = CFG_MOUNT,
+        .partition_label = "storage",
+        .format_if_mount_failed = false,
+        .dont_mount = false,
+    };
+    esp_err_t err = esp_vfs_littlefs_register(&conf);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "littlefs remount failed: %s", esp_err_to_name(err));
+        fs_ok = false;
+        return false;
+    }
+    fs_ok = true;
+    return true;
+}
+
 /* ------------------------------------------------------------------ */
 /* NVS helpers                                                          */
 

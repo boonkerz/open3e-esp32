@@ -6,8 +6,8 @@ LDLIBS  := -lcjson -lm
 SRC     := ../main/o3e_json.c ../main/o3e_db.c ../main/o3e_codec.c
 FLAT    := ../main/o3e_flatten.c
 
-.PHONY: all clean codec encode flatten isotp uds em380 collect hadisco contact knx topic heatcurve sanitize
-all: codec encode flatten em380 isotp uds collect hadisco contact knx topic heatcurve
+.PHONY: all clean codec encode flatten isotp uds em380 collect hadisco contact knx topic heatcurve updatepkg sanitize
+all: codec encode flatten em380 isotp uds collect hadisco contact knx topic heatcurve updatepkg
 
 build:
 	@mkdir -p build
@@ -35,6 +35,15 @@ heatcurve: build/test_heatcurve
 	@# A drawing that is not well-formed XML opens nowhere, and no string
 	@# comparison notices a truncated tag.
 	python3 -I -c "import sys, xml.dom.minidom as m; [m.parse(f) for f in sys.argv[1:]]" build/curve_floor.svg build/curve_radiator.svg build/curve_bare.svg
+
+build/test_updatepkg: build test_updatepkg.c ../main/update_pkg.c
+	$(CC) $(CFLAGS) -o $@ test_updatepkg.c ../main/update_pkg.c
+
+# Two stand-in images (gen_update_stubs.py), packed by the real tool.
+updatepkg: build/test_updatepkg
+	python3 -I gen_update_stubs.py build
+	python3 -I ../tools/make_update.py --firmware build/fw_test.bin --storage build/st_test.bin --version 9.8.7+test -o build/update_test.bin
+	./build/test_updatepkg build/update_test.bin
 
 build/test_contact: build test_contact.c ../main/contact.c
 	$(CC) $(CFLAGS) -o $@ test_contact.c ../main/contact.c

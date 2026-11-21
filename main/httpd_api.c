@@ -35,6 +35,7 @@
 #include "o3e_db.h"
 #include "o3e_json.h"
 #include "ota.h"
+#include "update.h"
 #include "poller.h"
 #include "raw_relay.h"
 #include "sysinfo.h"
@@ -1728,7 +1729,12 @@ static esp_err_t h_export(httpd_req_t *r)
         }
     }
     send_chunk_str(r, "}");
-    return httpd_resp_send_chunk(r, NULL, 0);
+    esp_err_t sent = httpd_resp_send_chunk(r, NULL, 0);
+    if (sent == ESP_OK) {
+        /* Only a backup that went out in full unlocks the update. */
+        update_note_backup();
+    }
+    return sent;
 }
 
 /* Restore. The body can be several hundred kilobytes, so it goes to a file
@@ -2425,12 +2431,80 @@ static esp_err_t h_storage_put(httpd_req_t *r)
     if (!storage_image_end(err, sizeof(err))) {
         return send_err(r, 400, err);
     }
-    /* The filesystem is unmounted at this point, so nothing else works until
-     * the device comes back up. */
-    send_json(r, "{\"ok\": true, \"restarting\": true}");
+    /* The database is closed and stays so until the device comes back up. */
+    int kept = 0, failed = 0;
+    storage_image_kept(&kept, &failed);
+    char out[96];
+    snprintf(out, sizeof(out), "{\"ok\": true, \"restarting\": true, "
+             "\"kept\": %d, \"keepFailed\": %d}", kept, failed);
+    send_json(r, out);
     restart_soon(800);
     return ESP_OK;
 }
+
+/* ---- the update package: firmware and storage in one ---- */
+
+static esp_err_t h_update_get(httpd_req_t *r)
+{
+    update_status_t u;
+    update_status(&u);
+    ota_info_t oi;
+    ota_info(&oi);
+    char out[640];
+    snprintf(out, sizeof(out),
+             "{\"state\": \"%s\", \"online\": %s, \"received\": %u, \"total\": %u, "
+             "\"version\": \"%s\", \"error\": \"%s\", \"kept\": %d, \"keepFailed\": %d, "
+             "\"current\": \"%s\", \"backupAgeS\": %d, \"backupValidS\": %d, "
+             "\"available\": {\"channel\": \"%s\", \"version\": \"%s\", \"size\": %u}}",
+             update_state_name(u.state), u.online ? "true" : "false",
+             (unsigned)u.received, (unsigned)u.total, u.version, u.error,
+             u.kept, u.keep_failed, oi.version, (int)u.backup_age_s,
+             UPDATE_BACKUP_VALID_S, u.avail_channel, u.avail_version,
+             (unsigned)u.avail_size);
+    send_json(r, out);
+    return ESP_OK;
+}
+
+/* The body is the package. Nothing in use is touched before it has arrived
+ * in full and its checksums match -- see update.h. */
+static esp_err_t h_update_post(httpd_req_t *r)
+{
+    char err[160] = "";
+    if (!update_begin((size_t)r->content_len, err, sizeof(err))) {
+        return send_err(r, strstr(err, "backup") ? 409 : 400, err);
+    }
+    esp_err_t e = stream_upload(r, update_feed, update_abort, err, sizeof(err));
+    if (e != ESP_OK) {
+        return e;
+    }
+    if (!update_finish(err, sizeof(err))) {
+        return send_err(r, 400, err);
+    }
+    update_status_t u;
+    update_status(&u);
+    char out[160];
+    snprintf(out, sizeof(out), "{\"ok\": true, \"restarting\": true, \"version\": \"%s\", "
+             "\"kept\": %d, \"keepFailed\": %d}", u.version, u.kept, u.keep_failed);
+    send_json(r, out);
+    restart_soon(800);
+    return ESP_OK;
+}
+
+static esp_err_t update_online(httpd_req_t *r, bool install)
+{
+    char ch[12] = "release", err[160] = "";
+    query_str(r, "channel", ch, sizeof(ch));
+    bool ok = install ? update_online_install(ch, err, sizeof(err))
+                      : update_online_check(ch, err, sizeof(err));
+    if (!ok) {
+        return send_err(r, strstr(err, "backup") ? 409 : 400, err);
+    }
+    send_json(r, "{\"ok\": true}");
+    return ESP_OK;
+}
+
+static esp_err_t h_update_check(httpd_req_t *r)  { return update_online(r, false); }
+static esp_err_t h_update_online(httpd_req_t *r) { return update_online(r, true); }
 
 /* Firmware upload. The body is the raw .bin, streamed straight into the spare
  * app partition -- buffering a megabyte first would not fit in RAM. */
@@ -2671,6 +2745,10 @@ static const httpd_uri_t routes[] = {
     { "/api/settings",    HTTP_GET,  h_settings_get, NULL },
     { "/api/settings",    HTTP_PUT,  h_settings_put, NULL },
     { "/api/ota",         HTTP_POST, h_ota,          NULL },
+    { "/api/update",        HTTP_GET,  h_update_get,    NULL },
+    { "/api/update",        HTTP_POST, h_update_post,   NULL },
+    { "/api/update/check",  HTTP_POST, h_update_check,  NULL },
+    { "/api/update/online", HTTP_POST, h_update_online, NULL },
     { "/api/fs",          HTTP_POST, h_fs_put,       NULL },
     { "/api/storage",     HTTP_POST, h_storage_put,  NULL },
     { "/api/reset",       HTTP_POST, h_reset,        NULL },

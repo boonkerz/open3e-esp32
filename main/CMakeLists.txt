@@ -27,6 +27,8 @@ idf_component_register(
         "o3e_flatten.c"
         "o3e_json.c"
         "ota.c"
+        "update.c"
+        "update_pkg.c"
         "poller.c"
         "raw_relay.c"
         "sysinfo.c"
@@ -43,6 +45,9 @@ idf_component_register(
         esp_wifi
         nvs_flash
         app_update
+        esp_http_client
+        esp-tls
+        mbedtls
     PRIV_REQUIRES
         espcoredump
         espressif__cjson

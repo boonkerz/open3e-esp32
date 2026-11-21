@@ -212,4 +212,10 @@ pre.mono { background: var(--bg); border: 1px solid var(--line); border-radius: 
 
 .muted { color: var(--muted); }
 .small { font-size: 12px; }
+.steps { margin: 0; padding-left: 22px; }
+.steps > li { margin: 0 0 18px; padding-left: 4px; }
+.steps > li:last-child { margin-bottom: 0; }
+.steps > li.locked { opacity: .45; pointer-events: none; }
+.steps > li.done > b::after { content: "  ✓"; color: var(--accent); }
+.steps .hint { margin-top: 6px; }
 .warnbox { border-left: 3px solid var(--warn); background: var(--bg); padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; font-size: 13px; }

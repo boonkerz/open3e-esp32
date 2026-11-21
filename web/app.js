@@ -2176,7 +2176,7 @@ function initApp() {
     if (!f) return;
     if (!confirm(
         `${f.name} (${Math.round(f.size / 1024)} KiB) auf die Storage-Partition schreiben?\n\n`
-      + "Datenpunkt-Auswahl und Scan-Ergebnis gehen dabei verloren. "
+      + "Auswahl und Scan-Ergebnis trägt das Gerät selbst hinüber. "
       + "Das Gerät startet danach neu.")) return;
     $("st-progress").hidden = false;
     $("st-upload").disabled = true;
@@ -2393,6 +2393,7 @@ function initApp() {
   loadNames().then(loadPoints).then(loadSystem).then(loadPlant).then(loadMeter).then(loadCollect);
   loadCrash();
   loadSysinfo();
+  initUpdate();
   loadSettings().catch(() => {});
 }
 
@@ -2417,6 +2418,186 @@ async function loadCrash() {
     line("Ursache", `${d.cause}, Adresse ${d.vaddr}`),
     line("Build", d.elfSha),
     line("Rückverfolgung", (d.bt || []).join(" ") + (d.corrupted ? "  (unvollständig)" : "")));
+
+  /* The report survives restarts and updates until someone deletes it. One
+     from another build is not "the last session", and saying so sent the
+     search in the wrong direction after an update. */
+  let sha = "";
+  try { sha = (await api("/api/status")).elfSha || ""; } catch { /* keep the default */ }
+  const n = Math.min(sha.length, (d.elfSha || "").length);
+  if (n >= 6 && sha.slice(0, n) !== d.elfSha.slice(0, n)) {
+    $("crash-title").textContent = "Älterer Absturzbericht von einer früheren Firmware "
+      + "— die laufende Version ist nicht abgestürzt.";
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Update in three steps: backup, choose, install. The device enforces the
+   first one itself (409 without a recent backup); the page only mirrors what
+   /api/update reports, so a reload in the middle loses nothing. */
+function initUpdate() {
+  let src = null;          /* { kind: "net", channel, version } | { kind: "file", file } */
+  let backupOk = false, running = false;
+  const kib = (n) => `${Math.round(n / 1024)} KiB`;
+
+  const paint = (u) => {
+    if (u) {
+      backupOk = u.backupAgeS >= 0 && u.backupAgeS < u.backupValidS;
+      $("up-current").textContent = `Installiert ist ${u.current}.`;
+    }
+    $("up-s1").classList.toggle("done", backupOk);
+    $("up-bk-state").textContent = backupOk ? "" : "— noch nicht erledigt";
+    $("up-s2").classList.toggle("locked", !backupOk || running);
+    $("up-s2").classList.toggle("done", backupOk && !!src);
+    $("up-s3").classList.toggle("locked", !backupOk || !src);
+    $("up-run").disabled = !backupOk || !src || running;
+  };
+  const load = async () => {
+    try { const u = await api("/api/update"); paint(u); return u; } catch { return null; }
+  };
+
+  $("up-backup").onclick = () => {
+    window.location = "/api/export?scan=1";
+    /* The download is the browser's business; the device says when it went
+       out in full. */
+    let tries = 0;
+    const wait = async () => {
+      await load();
+      if (!backupOk && ++tries < 40) setTimeout(wait, 1500);
+    };
+    setTimeout(wait, 1500);
+  };
+
+  $("up-check").onclick = async () => {
+    const channel = $("up-channel").value;
+    const out = $("up-choice");
+    $("up-check").disabled = true;
+    out.textContent = "Das Gerät fragt nach …";
+    try {
+      await api(`/api/update/check?channel=${channel}`, { method: "POST" });
+      let u;
+      for (let i = 0; i < 40; i++) {
+        await new Promise((r) => setTimeout(r, 1000));
+        u = await api("/api/update");
+        if (u.state !== "checking") break;
+      }
+      if (u.state === "failed") throw new Error(u.error);
+      if (u.state === "checking") throw new Error("keine Antwort vom Update-Server");
+      const a = u.available;
+      src = { kind: "net", channel, version: a.version };
+      $("up-file").value = "";
+      out.textContent = a.version === u.current
+        ? `Version ${a.version} ist bereits installiert. Erneut einspielen ist möglich.`
+        : `Verfügbar: ${a.version} (${kib(a.size)}), installiert ist ${u.current}.`;
+    } catch (e) {
+      src = null;
+      out.textContent = `Suche fehlgeschlagen: ${e.message}`;
+    }
+    $("up-check").disabled = false;
+    if (!await load()) paint();
+  };
+
+  $("up-file").onchange = () => {
+    const f = $("up-file").files[0];
+    src = f ? { kind: "file", file: f } : null;
+    $("up-choice").textContent = f ? `Datei: ${f.name} (${kib(f.size)})` : "";
+    paint();
+  };
+
+  const bar = $("up-bar"), msg = $("up-msg");
+  const failed = (text) => {
+    running = false;
+    msg.textContent = text;
+    toast(text, "err");
+    load();
+  };
+  const finished = (kept, keepFailed) => {
+    bar.style.width = "100%";
+    const note = keepFailed
+      ? `Eingespielt, aber ${keepFailed} Datei(en) ließen sich nicht übernehmen — `
+        + "nach dem Neustart die Sicherung einspielen."
+      : "Eingespielt.";
+    waitForRestart(msg, note, true);
+  };
+
+  /* The device downloads; the page watches. The device restarts on its own
+     at the end, so a status request that fails after "installing" is the
+     expected ending and not an error. */
+  const watchOnline = async () => {
+    let seenInstall = false, misses = 0;
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 1500));
+      let u;
+      try {
+        u = await api("/api/update");
+        misses = 0;
+      } catch {
+        if (seenInstall || ++misses > 8) return finished(0, 0);
+        continue;
+      }
+      if (u.state === "failed") return failed(u.error);
+      if (u.state === "done") return finished(u.kept, u.keepFailed);
+      if (u.state === "installing") {
+        seenInstall = true;
+        bar.style.width = "100%";
+        msg.textContent = "Geladen und geprüft. Das Gerät schreibt jetzt, nicht ausschalten.";
+      } else if (u.total) {
+        bar.style.width = `${(100 * u.received) / u.total}%`;
+        msg.textContent = `Das Gerät lädt ${u.version || "das Update"}: `
+                        + `${kib(u.received)} von ${kib(u.total)}`;
+      } else {
+        msg.textContent = "Das Gerät verbindet sich mit dem Update-Server …";
+      }
+    }
+  };
+
+  const sendFile = (file) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/update");
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.upload.onprogress = (e) => {
+      if (!e.lengthComputable) return;
+      bar.style.width = `${(100 * e.loaded) / e.total}%`;
+      msg.textContent = e.loaded < e.total
+        ? `${kib(e.loaded)} von ${kib(e.total)}`
+        : "Übertragen. Das Gerät prüft und schreibt jetzt, nicht ausschalten.";
+    };
+    xhr.onload = () => {
+      let body = {};
+      try { body = JSON.parse(xhr.responseText); } catch { /* ignore */ }
+      if (xhr.status >= 200 && xhr.status < 300) finished(body.kept, body.keepFailed);
+      else failed(body.error || `Fehlgeschlagen (HTTP ${xhr.status})`);
+    };
+    /* The connection can drop while the device is busy writing flash. What
+       happened is on the device, so ask it instead of guessing. */
+    xhr.onerror = async () => {
+      const u = await load();
+      if (!u || u.state === "done" || u.state === "installing") finished(u?.kept, u?.keepFailed);
+      else failed(u.error || "Verbindung während des Uploads abgebrochen. Nichts wurde geändert.");
+    };
+    xhr.send(file);
+  };
+
+  $("up-run").onclick = async () => {
+    if (!src || running) return;
+    const what = src.kind === "net" ? `Version ${src.version} aus dem Netz` : src.file.name;
+    if (!confirm(`${what} einspielen?\n\nDas dauert zwei bis drei Minuten. `
+               + "In dieser Zeit das Gerät nicht ausschalten.")) return;
+    running = true;
+    paint();
+    $("up-progress").hidden = false;
+    bar.style.width = "0";
+    msg.textContent = "Startet …";
+    if (src.kind === "file") return sendFile(src.file);
+    try {
+      await api(`/api/update/online?channel=${src.channel}`, { method: "POST" });
+      watchOnline();
+    } catch (e) {
+      failed(e.message);
+    }
+  };
+
+  load();
 }
 
 /* ------------------------------------------------------------------ */

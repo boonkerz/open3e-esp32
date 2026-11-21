@@ -2,7 +2,7 @@
 
 PY := .venv/bin/python
 
-.PHONY: install-pull help setup db fixtures test sanitize storage lint fwinfo site deploy clean
+.PHONY: install-pull help setup db fixtures test sanitize storage lint fwinfo package site deploy clean
 
 help:
 	@echo "make setup     create the Python venv and fetch open3e"
@@ -62,6 +62,10 @@ CHANNEL     ?= dev
 #     DEPLOY_HOST = root@10.0.0.2
 #     DEPLOY_PATH = /var/www/esp32can
 -include .deploy.mk
+
+# Firmware and storage in one file, for Einstellungen -> Wartung -> Update.
+package:
+	$(PY) tools/make_update.py
 
 site:
 	$(PY) tools/build_site.py --channel $(CHANNEL)

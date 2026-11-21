@@ -44,6 +44,13 @@ bool ota_write(const void *data, size_t len, char *err, size_t err_sz);
 bool ota_end(char *err, size_t err_sz);
 void ota_abort(void);
 
+/* end() in two steps, for an update that also replaces the storage partition:
+ * the image is validated first, the storage is written, and only then does
+ * the boot partition change -- so a failure in between leaves the device
+ * starting the firmware it was running. */
+bool ota_validate(char *err, size_t err_sz);
+bool ota_activate(char *err, size_t err_sz);
+
 /* ------------------------------------------------------------------ */
 /* Storage partition                                                    */
 /*
@@ -66,10 +73,21 @@ bool storage_file_end(char *err, size_t err_sz);
 void storage_file_abort(void);
 
 /* Overwrite the entire storage partition with a littlefs image. The filesystem
- * is unmounted first, so the device must reboot afterwards. */
+ * is unmounted first, so the device must reboot afterwards.
+ *
+ * What the user put on that partition survives it: begin() reads the
+ * selection, the scan result and whatever else is not part of an image into
+ * memory, end() mounts the new filesystem and writes it back. That used to be
+ * the user's job -- download a backup, flash, restore -- and whoever skipped
+ * it lost a twenty-minute scan. The image may be shorter than the partition
+ * (an update package ships it without its erased tail); end() erases the
+ * rest. */
 bool storage_image_begin(size_t total_size, char *err, size_t err_sz);
 bool storage_image_write(const void *data, size_t len, char *err, size_t err_sz);
 bool storage_image_end(char *err, size_t err_sz);
 void storage_image_abort(void);
+/* How the carrying-over went, after end(): files written back, files that
+ * could not be. */
+void storage_image_kept(int *kept, int *failed);
 
 #endif /* O3E_OTA_H */
