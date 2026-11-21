@@ -281,6 +281,26 @@ int main(int argc, char **argv)
         }
     }
 
+    /* --- the heating curve is writable although open3e says read-only --- */
+    reset("[{\"ecu\":1664,\"did\":880,\"len\":4,\"enabled\":true,\"interval\":60,"
+          "\"mode\":\"flat\",\"topic\":\"\",\"ha\":true,"
+          "\"range\":{\"Gradient\":{\"min\":0.2,\"max\":3.5}}}]",
+          "open3e-vent/cmnd", "flat");
+    ha_disco_publish_all();
+    m = find("homeassistant/number/open3e_112233/680_880_Gradient_set/config");
+    ok("heating curve gradient gets a control", m != NULL, NULL);
+    if (m) {
+        cJSON *j = cJSON_Parse(m->payload);
+        const cJSON *mn = j ? cJSON_GetObjectItem(j, "min") : NULL;
+        const cJSON *mx = j ? cJSON_GetObjectItem(j, "max") : NULL;
+        ok("with the range of the selection",
+           cJSON_IsNumber(mn) && mn->valuedouble > 0.19 && mn->valuedouble < 0.21
+             && cJSON_IsNumber(mx) && mx->valuedouble == 3.5, m->payload);
+        cJSON_Delete(j);
+    }
+    ok("and so does the level",
+       find("homeassistant/number/open3e_112233/680_880_Level_set/config") != NULL, NULL);
+
     /* --- an operator's range narrows the number, in HA's own min/max --- */
     reset("[{\"ecu\":1664,\"did\":533,\"len\":2,\"enabled\":true,\"interval\":60,"
           "\"mode\":\"flat\",\"topic\":\"\",\"ha\":true,"

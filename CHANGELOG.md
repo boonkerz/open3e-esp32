@@ -38,6 +38,12 @@ bis dahin auf der Flash-Seite lag.
   Häkchens oder Ändern von Topic oder Modus leert das Gerät die alten
   Topics mit einer leeren retained Nachricht (wenn der Broker gerade
   verbunden ist).
+- **Heizkennlinie aus Home Assistant einstellbar.** Neigung und Niveau der
+  Heizkreise (DID 880 bis 887) führt open3e als nur lesbar; eine Vitocal
+  250-A nimmt das Schreiben über den Bus an, die Datenbank markiert sie
+  deshalb als schreibbar. Mit „Schreiben freigeben" entstehen Regler; Grenzen
+  in der Datenpunkt-Tabelle setzen (`Gradient: 0.2..3.5`, `Level: -13..40`).
+  Geprüft an Heizkreis 1 einer Anlage. Kommt mit dem nächsten `storage.bin`.
 - **Favicon** für die Weboberfläche (#11, wunderbaum): zwei gegenläufige
   Leitungen mit Knoten in der Mitte, sein zweiter Vorschlag. Die Flash-Seite
   trägt dasselbe Symbol. Kommt mit dem nächsten `storage.bin`.
