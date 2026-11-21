@@ -11,6 +11,21 @@ bis dahin auf der Flash-Seite lag.
 
 ## Unveröffentlicht
 
+## 0.4.0 — 2026-11-21
+
+Das Update ist ab dieser Version ein Schritt: *Einstellungen → Wartung →
+Update* führt durch Sicherung, Auswahl und Einspielen, und Auswahl, Scan und
+Anlagenschema bleiben dabei erhalten. Von 0.3.0 aus geht es ein letztes Mal
+auf dem alten Weg, in dieser Reihenfolge: erst die Anwendung
+(`open3e-gateway-0.4.0.bin`), zwei Minuten warten, dann das Storage-Abbild
+(`open3e-gateway-0.4.0-storage.bin`). Mit der neuen Anwendung löscht das
+Abbild die Auswahl nicht mehr; eine Sicherung vorher schadet trotzdem nicht.
+
+Geprüft an einer Vitocal 250-A mit Vitocharge und an einer Vitovent. Die
+Abfragepause bei fremder Programmierung hat im Normalbetrieb nicht
+fälschlich ausgelöst; gegen ein echtes Software-Update der Anlage ist sie
+noch nicht erprobt.
+
 ### Hinzugefügt
 
 - **Dateien am Release.** Jedes Release trägt jetzt automatisch das
