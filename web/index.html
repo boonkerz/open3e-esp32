@@ -174,7 +174,7 @@
       <div class="v" id="s-reset">–</div></div>
     <div id="crash-box" hidden style="margin-top:12px">
       <div class="warnbox">
-        <b>Die letzte Sitzung endete mit einem Absturz.</b>
+        <b id="crash-title">Die letzte Sitzung endete mit einem Absturz.</b>
         <div class="mono small" id="crash-info" style="margin-top:8px"></div>
         <p class="small" style="margin:10px 0 0">Die Adressen sind ohne die
           zugehörige ELF-Datei nicht lesbar. Mit dem passenden Build auflösen:
@@ -823,6 +823,54 @@
   </div>
 
   <div class="subpanel" id="sub-maint">
+  <div class="card" id="card-update">
+    <h2>Update</h2>
+    <p class="hint">Firmware, Weboberfläche und Datenpunktdatenbank in einem
+      Schritt. Einstellungen, Datenpunkt-Auswahl, Scan-Ergebnis und
+      Anlagenschema bleiben erhalten. <span id="up-current"></span></p>
+    <ol class="steps">
+      <li id="up-s1">
+        <b>Sicherung herunterladen</b>
+        <span class="small" id="up-bk-state"></span>
+        <p class="hint">Pflicht vor jedem Update. Das Gerät trägt die Daten
+          selbst hinüber; die Sicherung ist für den Fall, dass währenddessen
+          der Strom ausfällt. Sie enthält Passwörter, entsprechend
+          aufbewahren.</p>
+        <button class="btn" id="up-backup">Sicherung herunterladen</button>
+      </li>
+      <li id="up-s2" class="locked">
+        <b>Update wählen</b>
+        <div class="row" style="margin-top:8px">
+          <label style="flex:0 0 auto"><span>Aus dem Netz</span>
+            <select id="up-channel">
+              <option value="release">Stabile Version</option>
+              <option value="dev">Entwicklungsstand</option>
+            </select></label>
+          <button class="btn sec" id="up-check" style="flex:0 0 auto">Nach Update suchen</button>
+        </div>
+        <p class="small muted" style="margin:6px 0 0">Das Gerät fragt dafür
+          <span class="mono">esp32can.thomas-peterson.de</span> — nur auf diesen
+          Knopfdruck, nie von selbst.</p>
+        <div class="row" style="margin-top:10px">
+          <label><span>oder Datei <span class="mono">open3e-update.bin</span></span>
+            <input type="file" id="up-file" accept=".bin"></label>
+        </div>
+        <p class="small" id="up-choice" style="margin:10px 0 0"></p>
+      </li>
+      <li id="up-s3" class="locked">
+        <b>Einspielen</b>
+        <p class="hint">Dauert zwei bis drei Minuten. <b>In dieser Zeit nicht
+          ausschalten und nicht neu starten</b> — auch dann nicht, wenn die
+          Seite eine Weile nichts anzeigt.</p>
+        <button class="btn" id="up-run" disabled>Update einspielen</button>
+        <div id="up-progress" hidden style="margin-top:14px">
+          <div class="bar"><i id="up-bar" style="width:0"></i></div>
+          <p class="small muted" id="up-msg" style="margin:6px 0 0"></p>
+        </div>
+      </li>
+    </ol>
+  </div>
+
   <div class="card">
     <h2>Sichern und wiederherstellen</h2>
     <p class="hint">Die Sicherung enthält WLAN, MQTT, Systemeinstellungen, die
@@ -965,6 +1013,8 @@
 
   <div class="card">
     <h2>1 · Nur die Weboberfläche</h2>
+    <p class="hint">Diese drei Karten sind für die Entwicklung. Das normale
+      Update liegt unter <i>Einstellungen → Wartung</i>.</p>
     <p class="hint"><b>Nicht</b> die Anwendung. Ändert nur, was der Browser zeigt — neue Bedienelemente aus der Firmware bleiben wirkungslos, wenn die Anwendung sie nicht kennt. Im Zweifel Karte&nbsp;3.</p>
     <p class="hint">Die Oberfläche liegt auf der Storage-Partition, nicht in der
       Firmware. Einzelne Dateien lassen sich hier direkt ersetzen — der schnelle
@@ -985,11 +1035,10 @@
     <p class="hint">Ersetzt die gesamte Storage-Partition mit
       <span class="mono">build/storage.bin</span> — nötig, wenn sich die
       open3e-Datenpunktdatenbank geändert hat.</p>
-    <div class="warnbox">
-      Dabei gehen <b>Datenpunkt-Auswahl und Scan-Ergebnis verloren</b>, weil sie
-      auf derselben Partition liegen. Die WLAN- und MQTT-Einstellungen bleiben —
-      die stehen im NVS.
-    </div>
+    <p class="hint">Datenpunkt-Auswahl, Scan-Ergebnis und Anlagenschema liegen
+      auf derselben Partition. Das Gerät liest sie vorher in den Arbeitsspeicher
+      und schreibt sie danach zurück. Fällt dabei der Strom aus, sind sie weg —
+      dafür ist die Sicherung da.</p>
     <div class="row">
       <label><span>Storage-Abbild (storage.bin, 4 MB)</span>
         <input type="file" id="st-file" accept=".bin"></label>

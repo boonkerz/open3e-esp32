@@ -13,6 +13,16 @@ bis dahin auf der Flash-Seite lag.
 
 ### Hinzugefügt
 
+- **Update in einem Schritt.** Unter *Einstellungen → Wartung* führt eine
+  Karte durch das Update: Sicherung herunterladen, Update wählen, einspielen.
+  Firmware, Weboberfläche und Datenbank kommen als eine Datei
+  (`open3e-update.bin`) oder das Gerät lädt sie auf Knopfdruck selbst von der
+  Flash-Seite, wahlweise die stabile Version oder den Entwicklungsstand. Von
+  sich aus fragt das Gerät dort nie an. Das Paket wird vollständig empfangen
+  und geprüft, bevor etwas Laufendes angefasst wird; ein abgebrochener
+  Transfer ändert nichts. Ohne frische Sicherung (eine Stunde) lehnt das
+  Gerät das Update ab.
+
 - **Schreibgrenzen je Datenpunkt.** Neue Spalte „Grenzen" in der
   Datenpunkttabelle (`10..60`, `..60`, `Comfort: 10..60`; Feld `range` in
   `points.json`). Home Assistant bekommt den Bereich als `min`/`max` seiner
@@ -48,7 +58,23 @@ bis dahin auf der Flash-Seite lag.
   Leitungen mit Knoten in der Mitte, sein zweiter Vorschlag. Die Flash-Seite
   trägt dasselbe Symbol. Kommt mit dem nächsten `storage.bin`.
 
+### Geändert
+
+- **Das Datenbank-Update löscht Auswahl und Scan nicht mehr.** Das Gerät
+  liest Datenpunkt-Auswahl, Scan-Ergebnis und Anlagenschema vor dem
+  Überschreiben der Storage-Partition in den Arbeitsspeicher und schreibt sie
+  danach zurück. Sichern und Wiederherstellen als Pflichtschritte um das
+  Update herum entfallen; die Sicherung bleibt als Absicherung gegen einen
+  Stromausfall während des Schreibens.
+- Die drei Einzelkarten (Weboberfläche, Datenbank, Anwendung) bleiben unter
+  *Debug* für die Entwicklung.
+
 ### Behoben
+
+- **Alter Absturzbericht sah wie ein neuer aus.** Der Bericht bleibt
+  gespeichert, bis man ihn löscht, auch über Updates hinweg. Stammt er von
+  einer anderen Firmware als der laufenden, steht das jetzt dabei, statt
+  „Die letzte Sitzung endete mit einem Absturz".
 
 - **Update sah wie fehlgeschlagen aus.** Nach Firmware-Update, Datenbank-Update
   und Wiederherstellen lud die Seite blind nach 20 Sekunden neu. Braucht das

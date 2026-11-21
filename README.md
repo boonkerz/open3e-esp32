@@ -1277,19 +1277,40 @@ Entitäten ohne Datenquelle stehen.
 
 ## Firmware-Update über die Weboberfläche
 
-Unter *Einstellungen → Wartung* gibt es drei Karten: **1** nur die
-Weboberfläche, **2** nur die Datenpunktdatenbank (`storage.bin`, löscht
-Auswahl und Scan, vorher sichern), **3** die Anwendung. Für eine neue Version
-zählt Karte 3: Datei `open3e-gateway.bin` wählen, *Hochladen und neu starten*.
-Die Dateien kommen von der Flash-Seite oder aus einem Release; wer selbst
-baut, nimmt `build/open3e-gateway.bin`.
+Unter *Einstellungen → Wartung* führt die Karte **Update** in drei Schritten
+durch:
 
-Das Gerät hängt im Heizungsraum, deshalb zwei Absicherungen:
+1. **Sicherung herunterladen.** Pflicht: ohne eine Sicherung aus der letzten
+   Stunde nimmt das Gerät kein Update an.
+2. **Update wählen.** Entweder *Nach Update suchen* (das Gerät fragt die
+   Flash-Seite nach der stabilen Version oder dem Entwicklungsstand) oder die
+   Datei `open3e-update.bin` hochladen. Wer selbst baut, erzeugt sie mit
+   `make package`.
+3. **Einspielen.** Zwei bis drei Minuten, danach lädt die Seite von selbst
+   neu.
 
-1. **Die laufende Firmware wird nicht angefasst.** Das Abbild geht in die
+Das Paket enthält Firmware, Weboberfläche und Datenpunktdatenbank. WLAN, MQTT
+und die übrigen Einstellungen stehen im NVS und sind nicht betroffen;
+Datenpunkt-Auswahl, Scan-Ergebnis und Anlagenschema liegen auf der Partition,
+die überschrieben wird, und werden vom Gerät selbst hinübergetragen. Die
+Sicherung ist für den einen Fall da, den das nicht abdeckt: Stromausfall in
+den Sekunden, in denen die Partition geschrieben wird.
+
+Ins Internet geht das Gerät dafür nur auf den Knopfdruck *Nach Update suchen*
+oder *Update einspielen*, nie von selbst, und nur zu
+`esp32can.thomas-peterson.de`. Ohne Internetzugang bleibt der Weg über die
+Datei.
+
+Das Gerät hängt im Heizungsraum, deshalb drei Absicherungen:
+
+1. **Erst prüfen, dann schreiben.** Das Paket wird vollständig empfangen und
+   gegen seine Prüfsummen geprüft, bevor etwas Laufendes angefasst wird. Ein
+   abgebrochener Transfer oder eine falsche Datei ändert nichts.
+
+2. **Die laufende Firmware wird nicht angefasst.** Das Abbild geht in die
    zweite App-Partition; erst wenn es vollständig geschrieben und geprüft ist,
    wird die Boot-Partition umgeschaltet.
-2. **Rollback.** Eine frisch eingespielte Firmware läuft *auf Probe*. Bestätigt
+3. **Rollback.** Eine frisch eingespielte Firmware läuft *auf Probe*. Bestätigt
    sie sich nicht binnen 60 Sekunden als lauffähig, startet der Bootloader beim
    nächsten Reset wieder die vorherige. Der Statusbereich zeigt an, solange der
    Probelauf offen ist.
@@ -1307,10 +1328,15 @@ Vor dem ersten Byte wird geprüft, ob die Datei überhaupt ein ESP32-Abbild ist
 (Magic `0xE9`) — eine falsch ausgewählte Datei kann die Reservepartition also
 nicht halb beschreiben.
 
-### Weboberfläche und Datenbank
+### Einzelteile für die Entwicklung
 
-Die liegen auf der Storage-Partition, nicht in der Firmware — und lassen sich
-ebenfalls über das Web-UI erneuern:
+Unter *Debug* liegen drei Karten, die je ein Teil einzeln ersetzen: einzelne
+Webdateien, die Storage-Partition (`storage.bin`), die Anwendung
+(`open3e-gateway.bin`). Auch das Storage-Abbild trägt Auswahl und Scan
+inzwischen selbst hinüber. Diese Wege verlangen keine Sicherung.
+
+Weboberfläche und Datenbank liegen auf der Storage-Partition, nicht in der
+Firmware:
 
 | Weg | Wofür | Umfang |
 |---|---|---|

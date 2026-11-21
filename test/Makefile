@@ -6,8 +6,8 @@ LDLIBS  := -lcjson -lm
 SRC     := ../main/o3e_json.c ../main/o3e_db.c ../main/o3e_codec.c
 FLAT    := ../main/o3e_flatten.c
 
-.PHONY: all clean codec encode flatten isotp uds em380 collect hadisco contact knx topic sanitize
-all: codec encode flatten em380 isotp uds collect hadisco contact knx topic
+.PHONY: all clean codec encode flatten isotp uds em380 collect hadisco contact knx topic updatepkg sanitize
+all: codec encode flatten em380 isotp uds collect hadisco contact knx topic updatepkg
 
 build:
 	@mkdir -p build
@@ -26,6 +26,15 @@ build/test_collect: build test_collect.c ../main/collect_parse.c
 
 collect: build/test_collect
 	cd .. && test/build/test_collect test/collect_frames.txt
+
+build/test_updatepkg: build test_updatepkg.c ../main/update_pkg.c
+	$(CC) $(CFLAGS) -o $@ test_updatepkg.c ../main/update_pkg.c
+
+# Two stand-in images (gen_update_stubs.py), packed by the real tool.
+updatepkg: build/test_updatepkg
+	python3 -I gen_update_stubs.py build
+	python3 -I ../tools/make_update.py --firmware build/fw_test.bin --storage build/st_test.bin --version 9.8.7+test -o build/update_test.bin
+	./build/test_updatepkg build/update_test.bin
 
 build/test_contact: build test_contact.c ../main/contact.c
 	$(CC) $(CFLAGS) -o $@ test_contact.c ../main/contact.c
