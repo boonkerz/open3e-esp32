@@ -45,6 +45,9 @@ bool poller_reload(void);
 void poller_refresh(void);
 void poller_stats(poll_stats_t *out);
 
+/* Resolve the configured name used by MQTT's {device} placeholder. */
+void poller_device_name(uint16_t ecu, char *out, size_t out_sz);
+
 /* Read one datapoint immediately and return the decoded JSON, bypassing the
  * schedule. Used by the web UI's live value column and manual read.
  * Caller frees; `err` receives a reason when NULL is returned. */

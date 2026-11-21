@@ -6,8 +6,8 @@ LDLIBS  := -lcjson -lm
 SRC     := ../main/o3e_json.c ../main/o3e_db.c ../main/o3e_codec.c
 FLAT    := ../main/o3e_flatten.c
 
-.PHONY: all clean codec encode flatten isotp uds em380 collect hadisco contact knx topic heatcurve updatepkg busguard sanitize
-all: codec encode flatten em380 isotp uds collect hadisco contact knx topic heatcurve updatepkg busguard
+.PHONY: all clean codec encode flatten isotp uds em380 collect hadisco contact knx topic heatcurve updatepkg busguard mqtt-cmnd sanitize
+all: codec encode flatten em380 isotp uds collect hadisco contact knx topic heatcurve updatepkg busguard mqtt-cmnd
 
 build:
 	@mkdir -p build
@@ -60,6 +60,12 @@ contact: build/test_contact
 topic:
 	@if command -v node >/dev/null; then node test_topic.js; \
 	else echo "topic: node fehlt, übersprungen"; fi
+
+build/test_mqtt_cmnd: build test_mqtt_cmnd.c ../main/mqtt_cmnd.c ../main/o3e_json.c
+	$(CC) $(CFLAGS) -I stubs -I ../main -o $@ test_mqtt_cmnd.c ../main/o3e_json.c $(LDLIBS)
+
+mqtt-cmnd: build/test_mqtt_cmnd
+	./build/test_mqtt_cmnd
 
 build/test_knx: build test_knx.c ../main/knx_frame.c
 	$(CC) $(CFLAGS) -o $@ test_knx.c ../main/knx_frame.c

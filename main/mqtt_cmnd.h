@@ -1,14 +1,13 @@
 /* MQTT command listener.
  *
- * Accepts the same payload schema as open3e's -l/--listen mode, so scripts and
- * automations written against open3e keep working:
+ * Accepts decoded reads and writes in open3e's -l/--listen schema:
  *
  *   {"mode": "read", "data": [268, 269]}
  *   {"mode": "read", "data": [268], "addr": "0x680"}
- *   {"mode": "write", "data": {"396": 52.0}, "addr": "0x680"}
+ *   {"mode": "write", "data": [[396, 52.0]], "addr": "0x680"}
  *
  * Replies go to <base>/<didName> for reads, exactly like a scheduled poll, and
- * errors to <base>/ERR.
+ * errors to <base>/ERR. Raw writes and service 0x77 remain disabled.
  */
 #ifndef O3E_MQTT_CMND_H
 #define O3E_MQTT_CMND_H
