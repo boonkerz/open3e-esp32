@@ -14,6 +14,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "bus_guard.h"
 #include "isotp.h"
 #include "uds.h"
 

@@ -125,6 +125,17 @@ static void describe_ecu(scan_ecu_t *e, const uint8_t *payload, size_t len)
     cJSON_Delete(root);
 }
 
+/* While somebody else is programming a control unit the bus refuses every
+ * request (bus_guard.h). A scan that carried on would record all of them as
+ * "not there", so it waits instead; aborting still works. */
+static void wait_for_bus(void)
+{
+    while (!abort_req &&
+           bus_guard_blocked((uint32_t)(esp_timer_get_time() / 1000))) {
+        vTaskDelay(pdMS_TO_TICKS(500));
+    }
+}
+
 /* DID 377 carries the Viessmann identification number, which is what actually
  * names the product ("Vitocal 250-A" rather than "HPMUMASTER"). Not every
  * device answers it, so a failure here is not an error. */
@@ -132,6 +143,7 @@ static void read_viessmann_id(scan_ecu_t *e)
 {
     uint8_t buf[64];
     size_t n = 0;
+    wait_for_bus();
     if (can_read_did(e->addr, 377, buf, sizeof(buf), &n, UDS_SCAN_P2_MS).err != UDS_OK) {
         return;
     }
@@ -184,6 +196,7 @@ static void scan_ecus(void)
          * back as this one's if a response ever comes up short. */
         memset(buf, 0, sizeof(buf));
         size_t n = 0;
+        wait_for_bus();
         uds_result_t r = can_read_did(tx, 256, buf, sizeof(buf), &n, UDS_SCAN_P2_MS);
         if (r.err != UDS_OK) {
             continue;
@@ -257,6 +270,7 @@ static void scan_dids_of(uint8_t idx, scan_mode_t mode)
                      (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024));
         }
 
+        wait_for_bus();
         uds_result_t r = can_read_did(addr, did, scan_buf, ISOTP_MAX_PAYLOAD, &n,
                                       UDS_SCAN_P2_MS);
 

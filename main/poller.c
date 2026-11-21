@@ -303,12 +303,36 @@ static void poll_one(point_t *p)
 static void poll_task(void *arg)
 {
     (void)arg;
+    bool held_was = false;
     while (running) {
         if (paused) {
             vTaskDelay(pdMS_TO_TICKS(250));
             continue;
         }
         uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
+
+        /* Somebody else is programming a control unit (bus_guard.h). The bus
+         * would refuse every request anyway; not asking keeps the failure
+         * counter meaning what it says. */
+        bool held = bus_guard_blocked(now);
+        if (held != held_was) {
+            held_was = held;
+            if (held) {
+                bus_guard_stats_t gs;
+                bus_guard_stats(&gs, now);
+                ESP_LOGW(TAG, "cyclic reading held: service 0x%02X seen on 0x%03X, "
+                         "resuming after %u s of silence",
+                         gs.last_sid, gs.last_id, (unsigned)(BUS_GUARD_HOLD_MS / 1000));
+            } else {
+                ESP_LOGW(TAG, "cyclic reading resumed");
+                /* Everything is overdue by now; spread it out. */
+                poller_refresh();
+            }
+        }
+        if (held) {
+            vTaskDelay(pdMS_TO_TICKS(500));
+            continue;
+        }
 
         /* The lock is held only while picking the next due point; the CAN
          * request itself runs unlocked so a web UI save is never blocked

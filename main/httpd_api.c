@@ -387,6 +387,21 @@ static esp_err_t h_status(httpd_req_t *r)
              (unsigned)can.recovery_count, can.holder, (unsigned)can.held_ms);
     o3e_buf_adds(&b, t);
 
+    /* Whether the gateway is keeping quiet for somebody else, see
+     * bus_guard.h. lastId/lastSid name the frame that caused it. */
+    bus_guard_stats_t bg;
+    bus_guard_stats(&bg, (uint32_t)(esp_timer_get_time() / 1000));
+    snprintf(t, sizeof(t),
+             "\"guard\": {\"enabled\": %s, \"active\": %s, \"remainingS\": %u, "
+             "\"holds\": %u, \"critical\": %u, \"foreign\": %u, "
+             "\"refused\": %u, \"settled\": %u, "
+             "\"lastId\": %u, \"lastSid\": %u}, ",
+             bg.enabled ? "true" : "false", bg.active ? "true" : "false",
+             (unsigned)bg.remaining_s, (unsigned)bg.holds, (unsigned)bg.critical,
+             (unsigned)bg.foreign, (unsigned)bg.refused, (unsigned)bg.settled,
+             bg.last_id, bg.last_sid);
+    o3e_buf_adds(&b, t);
+
     snprintf(t, sizeof(t),
              "\"mqtt\": {\"connected\": %s, \"published\": %u, \"errors\": %u, "
              "\"haSensors\": %d, \"haControls\": %d}, "
@@ -633,6 +648,14 @@ static esp_err_t h_scan_start(httpd_req_t *r)
 static esp_err_t h_scan_abort(httpd_req_t *r)
 {
     e3_scan_abort();
+    return send_json(r, "{\"ok\": true}");
+}
+
+/* End a hold by hand: the person at the device knows the commissioning run
+ * is over and does not want to wait out the silence. */
+static esp_err_t h_guard_release(httpd_req_t *r)
+{
+    bus_guard_release();
     return send_json(r, "{\"ok\": true}");
 }
 
@@ -1596,6 +1619,8 @@ static esp_err_t h_export(httpd_req_t *r)
     o3e_buf_adds(&b, sys.raw_write_enabled ? "true" : "false");
     o3e_buf_adds(&b, ", \"em380Enabled\": ");
     o3e_buf_adds(&b, sys.em380_enabled ? "true" : "false");
+    o3e_buf_adds(&b, ", \"busGuard\": ");
+    o3e_buf_adds(&b, sys.bus_guard_off ? "false" : "true");
     o3e_buf_adds(&b, ", \"collectEnabled\": ");
     o3e_buf_adds(&b, sys.collect_enabled ? "true" : "false");
     o3e_buf_adds(&b, ", \"collectCanIds\": ");
@@ -1795,6 +1820,9 @@ static bool import_apply(const cJSON *root, char *err, size_t err_sz)
         if (cJSON_IsBool(v = cJSON_GetObjectItem(js, "em380Enabled"))) {
             sc.em380_enabled = cJSON_IsTrue(v);
         }
+        if (cJSON_IsBool(v = cJSON_GetObjectItem(js, "busGuard"))) {
+            sc.bus_guard_off = !cJSON_IsTrue(v);
+        }
         copy_str(js, "tz", sc.tz, sizeof(sc.tz));
         {
             /* 0 keeps the driver default; anything else is bounded to what
@@ -1815,6 +1843,7 @@ static bool import_apply(const cJSON *root, char *err, size_t err_sz)
         contacts_from_json(cJSON_GetObjectItem(js, "contacts"), &sc);
         knx_from_json(cJSON_GetObjectItem(js, "knx"), &sc);
         sys_cfg_set(&sc);
+        bus_guard_set_enabled(!sc.bus_guard_off);
         contact_start();
         knx_start();
         can_port_set_timing(sc.can_sample_permill, sc.can_sjw);
@@ -1884,6 +1913,8 @@ static esp_err_t h_settings_get(httpd_req_t *r)
     o3e_buf_adds(&b, sys.raw_write_enabled ? "true" : "false");
     o3e_buf_adds(&b, ", \"em380Enabled\": ");
     o3e_buf_adds(&b, sys.em380_enabled ? "true" : "false");
+    o3e_buf_adds(&b, ", \"busGuard\": ");
+    o3e_buf_adds(&b, sys.bus_guard_off ? "false" : "true");
     o3e_buf_adds(&b, ", \"collectEnabled\": ");
     o3e_buf_adds(&b, sys.collect_enabled ? "true" : "false");
     o3e_buf_adds(&b, ", \"collectCanIds\": ");
@@ -2139,6 +2170,9 @@ static esp_err_t h_settings_put(httpd_req_t *r)
         if (cJSON_IsBool(v = cJSON_GetObjectItem(js, "em380Enabled"))) {
             sys.em380_enabled = cJSON_IsTrue(v);
         }
+        if (cJSON_IsBool(v = cJSON_GetObjectItem(js, "busGuard"))) {
+            sys.bus_guard_off = !cJSON_IsTrue(v);
+        }
         bool coll_was = sys.collect_enabled;
         char coll_ids_was[CFG_STR_MAX];
         snprintf(coll_ids_was, sizeof(coll_ids_was), "%s", sys.collect_canids);
@@ -2174,6 +2208,7 @@ static esp_err_t h_settings_put(httpd_req_t *r)
         knx_cfg_t knx_was = sys.knx;
         knx_from_json(cJSON_GetObjectItem(js, "knx"), &sys);
         sys_cfg_set(&sys);
+        bus_guard_set_enabled(!sys.bus_guard_off);
         if (sp_was != sys.can_sample_permill || sjw_was != sys.can_sjw) {
             can_port_set_timing(sys.can_sample_permill, sys.can_sjw);
         }
@@ -2397,6 +2432,7 @@ static esp_err_t h_reset(httpd_req_t *r)
         sys_cfg_t sys;
         memset(&sys, 0, sizeof(sys));
         sys_cfg_set(&sys);
+        bus_guard_set_enabled(true);
         /* Wi-Fi is deliberately kept: "reset everything" should not strand the
          * device on a network nobody can reach it on. Use "WLAN vergessen" for
          * that, which says what it does. */
@@ -2541,6 +2577,7 @@ static const httpd_uri_t routes[] = {
     { "/api/read",        HTTP_GET,  h_read,         NULL },
     { "/api/write",       HTTP_POST, h_write,        NULL },
     { "/api/grid",        HTTP_POST, h_grid,         NULL },
+    { "/api/guard/release", HTTP_POST, h_guard_release, NULL },
     { "/api/output",      HTTP_POST, h_output,       NULL },
     { "/api/crash",       HTTP_GET,  h_crash,        NULL },
     { "/api/crash",       HTTP_DELETE, h_crash,      NULL },

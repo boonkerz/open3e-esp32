@@ -2,6 +2,7 @@ idf_component_register(
     SRCS
         "main.c"
         "app_config.c"
+        "bus_guard.c"
         "can_port.c"
         "collect.c"
         "crashlog.c"

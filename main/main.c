@@ -106,6 +106,7 @@ void app_main(void)
                  CFG_DB_PATH);
     }
 
+    bus_guard_set_enabled(!sys.bus_guard_off);
     /* Bit timing from the settings; stored before the node exists. */
     can_port_set_timing(sys.can_sample_permill, sys.can_sjw);
     if (!can_port_start()) {

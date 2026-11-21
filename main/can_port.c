@@ -401,6 +401,14 @@ static bool IRAM_ATTR on_rx_done(twai_node_handle_t handle,
         return false;
     }
 
+    /* Somebody else talking UDS to the control units. The reply the current
+     * exchange waits for is ours and stays out of it. */
+    if (frame.header.id >= BUS_GUARD_ID_FIRST && frame.header.id <= BUS_GUARD_ID_LAST &&
+        frame.header.id != rx_want) {
+        bus_guard_note(frame.header.id, buf, dlc,
+                       (uint32_t)(esp_timer_get_time() / 1000));
+    }
+
     /* Broadcast frames are handed straight to every listener that wants them
      * rather than to the ISO-TP queue - putting them there instead would both
      * confuse an exchange in progress and lose them to the next flush_rx().
@@ -922,6 +930,13 @@ static uds_result_t with_bus(uint16_t ecu_tx, bool is_write, uint16_t did,
     if (!running || !bus_lock) {
         return (uds_result_t){ UDS_ERR_TRANSPORT, 0 };
     }
+    /* Somebody else is programming a control unit: nothing of ours goes out,
+     * whoever asks. Checked before queueing for the bus, so a caller learns it
+     * at once, and again once the bus is ours. */
+    if (bus_guard_blocked(hal_now_ms(NULL))) {
+        bus_guard_count_refused();
+        return (uds_result_t){ UDS_ERR_GUARD, 0 };
+    }
     /* Two-stage wait. The total is comfortably longer than the worst-case
      * single exchange (P2 plus a bounded number of P2* extensions) so queueing
      * behind one in-flight request never fails spuriously -- but a holder that
@@ -941,6 +956,26 @@ static uds_result_t with_bus(uint16_t ecu_tx, bool is_write, uint16_t did,
     }
     snprintf(bus_holder, sizeof(bus_holder), "%s", pcTaskGetName(NULL));
     bus_taken_ms = hal_now_ms(NULL);
+
+    /* Somebody else just asked a control unit something: let that exchange
+     * finish before starting ours. Bounded, so a controller that asks all
+     * day delays the gateway but cannot silence it. */
+    bool settled = false;
+    uint32_t gap;
+    while ((gap = bus_guard_settle_ms(hal_now_ms(NULL))) != 0 &&
+           hal_now_ms(NULL) - bus_taken_ms < BUS_GUARD_SETTLE_MAX_MS) {
+        if (!settled) {
+            settled = true;
+            bus_guard_count_settled();
+        }
+        vTaskDelay(pdMS_TO_TICKS(gap) + 1);
+    }
+    if (bus_guard_blocked(hal_now_ms(NULL))) {
+        bus_guard_count_refused();
+        bus_holder[0] = '\0';
+        xSemaphoreGive(bus_lock);
+        return (uds_result_t){ UDS_ERR_GUARD, 0 };
+    }
 
     /* Drain stale frames so this exchange never reads a previous session's
      * leftovers; a timed-out request can leave consecutive frames queued. */
