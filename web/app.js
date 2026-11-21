@@ -2817,7 +2817,11 @@ function derivePlant() {
     heater: !!roles.heater || (heaterPower && heaterPower.Power > 0),
     heaterW: heaterPower ? heaterPower.Power : 0,
     solar: fitted("indoor", 273) || fitted("indoor", 275),
-    flowSensor: fitted("indoor", 376),
+    /* A heat pump reports its flow on 376. A gas boiler has no such
+       datapoint and measures with the Allengra sensor on 1043 instead
+       (Vitodens 333-F, discussion #23). */
+    flowSensor: fitted("indoor", 376) || (!has("indoor", 376) && has("indoor", 1043)),
+    modulation: has("indoor", 526),
     pressure: fitted("indoor", 318),
     pump: has("indoor", 381),
     actors,
@@ -3147,9 +3151,13 @@ async function renderPlantControls(p) {
       box.dataset.did = it.did;
       box.dataset.len = hit[1];
       box.plantCtl = it;
-      rows.push(el("label", { className: "small", style: "display:block;margin:4px 0" }, box,
-        el("span", { textContent: ` ${it.label} ` }),
-        el("span", { className: "muted", textContent: `DID ${it.did}${ready ? " — schon in der Auswahl" : ""}` })));
+      /* Spans inside a label are blocks in this stylesheet (form fields with
+         a caption above); here they belong on one line with the box. */
+      const inline = "display:inline;margin:0";
+      rows.push(el("label", { className: "small", style: "display:flex;gap:8px;align-items:baseline;margin:4px 0" }, box,
+        el("span", { style: inline, textContent: it.label }),
+        el("span", { className: "muted", style: inline,
+                     textContent: `DID ${it.did}${ready ? " — schon in der Auswahl" : ""}` })));
       if (!ready) offered++;
     }
     if (rows.length) {
@@ -3230,9 +3238,16 @@ function renderPlant() {
     if ($("tab-plant").classList.contains("active") && !plantBusy) probePlant();
     return;
   }
-  kv("Lüfter", String(p.fans));
-  kv("Expansionsventile", String(p.eev));
-  kv("Vierwegeventil", yesno(p.fourWay));
+  /* Parts of a refrigerant circuit; on a boiler the three lines would only
+     say "0, 0, no" and read as if something had not been found. */
+  if (p.outdoor) {
+    kv("Lüfter", String(p.fans));
+    kv("Expansionsventile", String(p.eev));
+    kv("Vierwegeventil", yesno(p.fourWay));
+  } else {
+    kv("Brennermodulation", p.modulation ? "ja (DID 526)" : "nicht im Scan");
+  }
+  kv("Umschaltventil", p.diverter ? `ja (DID ${p.diverter})` : "nein");
   kv("Warmwasserspeicher", yesno(p.dhw));
   kv("Pufferspeicher", p.buffer.length ? `ja (DID ${p.buffer.join(", ")})` : "nein");
   const CIRCUIT_DE = {

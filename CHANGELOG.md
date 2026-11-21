@@ -11,6 +11,16 @@ bis dahin auf der Flash-Seite lag.
 
 ## Unveröffentlicht
 
+### Behoben
+
+- **Karte „Steuern": Häkchen, Name und Datenpunkt standen untereinander**
+  statt in einer Zeile.
+- **Reiter „Anlage" an einem Gas-Brennwertgerät.** Der Durchflusssensor
+  wird auch über DID 1043 erkannt (Vitodens 333-F), das Umschaltventil
+  steht im Profil, und statt Lüfter, Expansionsventilen und Vierwegeventil
+  zeigt das Profil dort, ob die Brennermodulation (DID 526) im Scan ist
+  (Diskussion #23).
+
 ## 0.4.0 — 2026-11-21
 
 Das Update ist ab dieser Version ein Schritt: *Einstellungen → Wartung →
