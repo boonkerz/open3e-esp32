@@ -876,6 +876,29 @@ Datenpunkte, die open3e selbst nicht kodieren kann (Text-, MAC-, Datumsfelder:
 `not implemented yet`), werden abgelehnt statt mit einer selbst erfundenen
 Kodierung geschrieben.
 
+### Heizkennlinie
+
+Neigung und Niveau eines Heizkreises stehen in `MixerOneCircuitCentralHeatingCurve`
+(DID 880, für die Kreise zwei bis acht 881 bis 887), Felder `Gradient` und
+`Level`. open3e führt sie als nur lesbar; eine Vitocal 250-A hat das Schreiben
+über den Bus angenommen, deshalb markiert die Datenbank dieses Geräts sie als
+`rw`. Mit „Schreiben freigeben" entstehen in Home Assistant Regler dafür.
+Die Datenbank kennt nur die Feldbreite, also Grenzen setzen: in der Spalte
+„Grenzen" etwa `Gradient: 0.2..3.5` für die Neigung, und für das Niveau
+`Level: -13..40`. Das dritte Feld `BasePoint` zeigt die App nicht; es bleibt
+besser, wie es ist.
+
+Zugeordnet, aber über den Bus nicht schreibbar, an derselben Anlage geprüft:
+
+| Einstellung in der App | Datenpunkt | Schreiben |
+|---|---|---|
+| Regelungsbetrieb (deaktiviert, monovalent, bivalent parallel, bivalent alternativ) | 2404 `BivalenceControlMode`, Feld `OperationMode`: 0 deaktiviert, 2 bivalent parallel | Anlage lehnt ab (`conditionsNotCorrect`) |
+| Name des Heizkreises | 627 `CentralHeatingOneCircuitName` | Textfeld, nicht kodierbar |
+| Intelligente Pumpensteuerung | nicht gefunden | in keinem der gescannten Datenpunkte sichtbar |
+
+Raum-Sollwerte (424), Betriebsart (1415) und Zeitprogramm (761 bis 767) waren
+schon vorher schreibbar.
+
 ---
 
 ## Rohdaten für externe Integrationen

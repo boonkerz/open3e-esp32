@@ -7,7 +7,7 @@ it: units, and the enumeration behind a sensor's error byte. Both matter here
 because Home Assistant builds its entity out of them -- a value with no unit
 gets no device class, no statistics and no place on a dashboard.
 
-Three rules only, all narrow, all verified against the whole database rather
+Four rules only, all narrow, all verified against the whole database rather
 than guessed:
 
   * A leaf with no unit whose datapoint name says what it measures gets that
@@ -22,6 +22,12 @@ than guessed:
     WaterPressureConfiguration (1721) carries the same scale as `bar`. Home
     Assistant took the label at its word and showed "1,70 hPa" (#25). Three
     datapoints: 318, 322, 325.
+  * The heating curve of a mixer circuit (880..887) is writable. open3e lists
+    it read-only; a Vitocal 250-A acknowledged a forced write of 880 over the
+    bus, and it is the setting people most want next to the room setpoints.
+    Tried on circuit one of one installation -- the other seven share its
+    layout and are included on that strength. The device still decides: one
+    that does not allow it answers the write with a negative response.
 
 Applied in two places that must not drift apart: gen_dpdb.py patches the JSON
 that becomes the firmware's database, and the fixture generators patch the
@@ -44,6 +50,11 @@ UNIT_RULES = [
 # (datapoint name, unit as open3e has it) -> unit the value is really in.
 UNIT_FIXES = [
     (re.compile(r"PressureSensor$"), "hPa", "bar"),
+]
+
+# Datapoints open3e records as read-only that a device accepted a write for.
+ACCESS_FIXES = [
+    re.compile(r"^Mixer\w+CircuitCentralHeatingCurve$"),
 ]
 
 NUMERIC = {"O3EInt8", "O3EInt16", "O3EInt32", "O3EInt64",
@@ -76,12 +87,15 @@ def _is_sensor_error(dp_name: str, sub_id: str, codec: str) -> bool:
 
 def apply_to_json(dps: dict) -> dict:
     """Patch Open3Edatapoints.json in place. Returns a count per change."""
-    stats = {"units": 0, "unit_fixes": 0, "sensor_error": 0}
+    stats = {"units": 0, "unit_fixes": 0, "sensor_error": 0, "access": 0}
     for key, dp in dps.items():
         if not (key.isdigit() and isinstance(dp, dict)):
             continue
         name = dp.get("id", "")
         unit = unit_for(name)
+        if dp["args"].get("acc") != "rw" and any(p.search(name) for p in ACCESS_FIXES):
+            dp["args"]["acc"] = "rw"
+            stats["access"] += 1
         subs = dp["args"].get("subTypes") if dp["codec"] == "O3EComplexType" else None
 
         if subs is None:
