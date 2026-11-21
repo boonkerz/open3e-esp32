@@ -9,11 +9,14 @@ static const o3e_dp_entry_t entries[] = {{.did = 257}, {.did = 259}, {.did = 396
 static char last_topic[256], last_payload[8192], write_value[512];
 static unsigned publications, reads, writes;
 static uint16_t last_ecu, last_did;
+static uint16_t read_ecus[16], read_dids[16];
 static bool write_force;
 static const char *scan_json =
     "{\"devices\":[{\"addr\":1664,\"name\":\"unit\",\"prop\":\"HPMUMASTER\","
     "\"vin\":\"VIN\",\"sw\":\"1.0\",\"hw\":\"2.0\","
-    "\"dids\":[[257,2],[396,4],[999,1]]}]}";
+    "\"dids\":[[257,2],[396,4],[999,1]]},"
+    "{\"addr\":1697,\"prop\":\"OTHER\",\"vin\":\"\",\"sw\":\"\",\"hw\":\"\","
+    "\"dids\":[[259,2]]}]}";
 
 void mqtt_cfg_get(mqtt_cfg_t *cfg)
 {
@@ -68,6 +71,9 @@ void o3e_codec_free(o3e_node_t *node) { (void)node; }
 char *poller_read_now(uint16_t ecu, uint16_t did, char *err, size_t size)
 {
     (void)err; (void)size;
+    assert(reads < sizeof(read_dids) / sizeof(read_dids[0]));
+    read_ecus[reads] = ecu;
+    read_dids[reads] = did;
     reads++;
     last_ecu = ecu;
     last_did = did;
@@ -154,10 +160,34 @@ int main(void)
 
     reset();
     execute("{\"mode\":\"read-all-json\",\"addr\":\"0x6a1\"}");
-    assert(reads == 3 && last_ecu == 0x6a1 && last_did == 396);
+    assert(reads == 1 && read_ecus[0] == 0x6a1 && read_dids[0] == 259);
+    reset();
+    execute("{\"mode\":\"read-all\"}");
+    assert(reads == 3 && read_ecus[0] == 0x680 && read_ecus[2] == 0x680);
+    assert(read_dids[0] == 257 && read_dids[1] == 396 && read_dids[2] == 999);
+    assert(strcmp(last_topic, "open3e/DID_999") == 0);
     execute("{\"mode\":\"read\",\"data\":[\"0x6a1.[257,,259]\"]}");
     assert(reads == 3 && strstr(last_payload, "invalid DID list"));
 
+    const char *invalid_scans[] = {
+        NULL, "{", "{\"devices\":{}}",
+        "{\"devices\":[{\"addr\":1664}]}",
+        "{\"devices\":[{\"addr\":1664,\"dids\":[]}]}",
+        "{\"devices\":[{\"addr\":1664,\"dids\":[[257,2],[1.5,2]]}]}",
+        "{\"devices\":[{\"addr\":1664,\"dids\":[[257,2],[65536,2]]}]}",
+        "{\"devices\":[{\"addr\":1664,\"dids\":[[257,2],[396]]}]}",
+        "{\"devices\":[{\"addr\":1664,\"dids\":[[257,2],\"396\"]}]}"
+    };
+    for (size_t i = 0; i < sizeof(invalid_scans) / sizeof(invalid_scans[0]); i++) {
+        scan_json = invalid_scans[i];
+        reset();
+        execute("{\"mode\":\"read-all\",\"addr\":\"0x680\"}");
+        assert(reads == 0 && strcmp(last_topic, "open3e/ERR") == 0);
+    }
+    scan_json = "{\"devices\":[{\"addr\":1664,\"dids\":[[257,2]]}]}";
+    reset();
+    execute("{\"mode\":\"read-all-json\",\"addr\":\"0x6a1\"}");
+    assert(reads == 0 && strcmp(last_topic, "open3e/ERR") == 0);
     reset();
     execute("{\"mode\":\"write\",\"data\":[[\"0x6a1.396.Comfort\",\"22.5\"]]}");
     assert(writes == 1 && last_ecu == 0x6a1 && last_did == 396 && !write_force);

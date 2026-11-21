@@ -23,8 +23,9 @@ bis dahin auf der Flash-Seite lag.
   Raw-Schreibbefehle und Service `0x77` bleiben deaktiviert, daher sind
   open3e-ha-Funktionen, die `write-raw` benötigen, nicht verfügbar.
   `read` und `read-json` liefern beide JSON; `read-all` und `read-all-json`
-  lesen beide alle DIDs der lokalen Datenbank. Einzelheiten und Einrichtung
-  stehen unter [MQTT](README.md#mqtt).
+  lesen beide die im Scan gefundenen DIDs der gewählten ECU. Ohne Scan-Ergebnis
+  für diese ECU wird ein Fehler gemeldet. Einzelheiten und Einrichtung stehen
+  unter [MQTT](README.md#mqtt).
 
 ### Behoben
 

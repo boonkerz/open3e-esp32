@@ -261,7 +261,9 @@ static void read_one(const cmnd_address_t *addr, bool raw, bool pure)
         reply_error("read 0x%03X.%u failed: %s", addr->ecu, addr->did, err);
         return;
     }
-    const char *name = entry ? o3e_db_name(entry) : "";
+    char unknown_name[24];
+    snprintf(unknown_name, sizeof(unknown_name), "DID_%u", addr->did);
+    const char *name = entry ? o3e_db_name(entry) : unknown_name;
     cJSON *value = NULL;
     char *selected_json = NULL;
     if (addr->field[0]) {
@@ -680,14 +682,69 @@ static void do_system(void)
 
 static void do_read_all(uint16_t ecu)
 {
-    for (size_t i = 0; i < o3e_db_count(); i++) {
-        const o3e_dp_entry_t *entry = o3e_db_at(i);
-        if (!entry) {
-            continue;
+    char *scan = e3_scan_result_json();
+    cJSON *root = scan ? cJSON_Parse(scan) : NULL;
+    free(scan);
+    const cJSON *devices = cJSON_GetObjectItemCaseSensitive(root, "devices");
+    if (!cJSON_IsArray(devices)) {
+        reply_error("read-all: no valid scan result; scan the bus first");
+        cJSON_Delete(root);
+        return;
+    }
+
+    const cJSON *device;
+    const cJSON *dids = NULL;
+    cJSON_ArrayForEach(device, devices) {
+        const cJSON *id = cJSON_GetObjectItemCaseSensitive(device, "addr");
+        if (cJSON_IsNumber(id) && id->valuedouble == ecu) {
+            dids = cJSON_GetObjectItemCaseSensitive(device, "dids");
+            break;
         }
-        cmnd_address_t addr = { .ecu = ecu, .did = entry->did };
+    }
+    if (!device) {
+        reply_error("read-all: ECU 0x%03X not found in scan result", ecu);
+        cJSON_Delete(root);
+        return;
+    }
+    if (!cJSON_IsArray(dids) || cJSON_GetArraySize(dids) == 0) {
+        reply_error("read-all: no DIDs for ECU 0x%03X; scan the device first", ecu);
+        cJSON_Delete(root);
+        return;
+    }
+
+    const cJSON *pair;
+    cJSON_ArrayForEach(pair, dids) {
+        const cJSON *did = cJSON_GetArrayItem(pair, 0);
+        const cJSON *len = cJSON_GetArrayItem(pair, 1);
+        if (!cJSON_IsArray(pair) || cJSON_GetArraySize(pair) != 2 ||
+            !cJSON_IsNumber(len) || len->valuedouble < 0 ||
+            len->valuedouble > UINT16_MAX ||
+            len->valuedouble != (uint16_t)len->valuedouble ||
+            !cJSON_IsNumber(did) ||
+            did->valuedouble < 0 || did->valuedouble > UINT16_MAX ||
+            did->valuedouble != (uint16_t)did->valuedouble) {
+            reply_error("read-all: invalid DID in scan result for ECU 0x%03X", ecu);
+            cJSON_Delete(root);
+            return;
+        }
+    }
+    size_t count = (size_t)cJSON_GetArraySize(dids);
+    uint16_t *numbers = malloc(count * sizeof(*numbers));
+    if (!numbers) {
+        reply_error("read-all: out of memory");
+        cJSON_Delete(root);
+        return;
+    }
+    size_t i = 0;
+    cJSON_ArrayForEach(pair, dids) {
+        numbers[i++] = (uint16_t)cJSON_GetArrayItem(pair, 0)->valuedouble;
+    }
+    cJSON_Delete(root);
+    for (i = 0; i < count; i++) {
+        cmnd_address_t addr = { .ecu = ecu, .did = numbers[i] };
         read_one(&addr, false, false);
     }
+    free(numbers);
 }
 
 /* Commands run on their own task.
