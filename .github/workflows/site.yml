@@ -95,7 +95,10 @@ jobs:
         run: |
           . "$IDF_PATH/export.sh"
           idf.py merge-bin -o "$PWD/build/factory.bin"
-          python3 tools/release_assets.py "${GITHUB_REF#refs/tags/v}" --factory build/factory.bin
+          ver="${GITHUB_REF#refs/tags/v}"
+          python3 tools/release_assets.py "$ver" --factory build/factory.bin
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+        id: assets
 
       # Creates the release for the tag, or adds to one made by hand. The
       # notes are this version's section of CHANGELOG.md and replace whatever
@@ -103,6 +106,7 @@ jobs:
       - uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
+          name: open3e-Gateway ${{ steps.assets.outputs.version }}
           files: |
             dist/*.bin
             dist/SHA256SUMS
