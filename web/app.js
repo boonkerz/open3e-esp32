@@ -2676,6 +2676,8 @@ const MODEL_TABLE = {
   "7988252": { family: "Vitocal 150-A", unit: "Außeneinheit AWMOF-151.A1.13, 400 V" },
   /* Dreman65, open3e-esp32 discussion #23 */
   "7956286": { family: "Vitodens 300-W", unit: "B3HG" },
+  /* Friedhofsblond, open3e-esp32 discussion #23 */
+  "7946873": { family: "Vitodens 333-F" },
 };
 
 /* Datapoints the probe reads, by controller role. Only those the scan lists
