@@ -2845,6 +2845,8 @@ function derivePlant() {
     burnerFan: has("burner", 373) || has("indoor", 373),
     burnerFanRole: has("burner", 373) ? "burner" : "indoor",
     burnerStarts: has("indoor", 365),
+    burnerHours: has("indoor", 1346),
+    dampedOutside: has("indoor", 2457),
     pressure: fitted("indoor", 318),
     pump: has("indoor", 381),
     actors,
@@ -2964,6 +2966,12 @@ function svTank(x, y, w, h) {
 function svHeater(x, y) {
   return sv("path", { class: "sym", d: `M${x - 8},${y + 14} V${y - 6} q 0,-8 8,-8 q 8,0 8,8 V${y + 14} M${x},${y + 14} V${y - 2}` });
 }
+function svRadiator(x, y) {
+  const fins = [-8, 0, 8].map((dx) => `M${x + dx},${y - 30} V${y + 30}`).join(" ");
+  return sv("g", { class: "sym" },
+    sv("rect", { x: x - 16, y: y - 36, width: 32, height: 72, rx: 4, fill: "#0b1020" }),
+    sv("path", { d: fins }));
+}
 function svFlame(x, y) {
   return sv("path", { class: "sym", stroke: "#f97316",
     d: `M${x},${y - 34} c 14,14 22,24 22,38 a 22,22 0 0 1 -44,0 c 0,-10 6,-16 10,-24 c 2,8 6,10 8,10 c 2,-8 0,-16 4,-24 Z` });
@@ -3003,6 +3011,8 @@ function plantSlots(p) {
   add("flue", "indoor", 331, { f: "Actual", unit: "°C", part: "flue" });
   add("bfan", p.burnerFanRole, 373, { unit: "rpm", d: 0, part: "bfan" });
   add("starts", "indoor", 365, { f: "BurnerStarts", unit: "", d: 0, part: "starts" });
+  add("hours", "indoor", 1346, { f: "BurnerHours", unit: "h", d: 0, part: "hours" });
+  add("damped", "indoor", 2457, { f: "DampedActual", unit: "°C", part: "damped" });
   add("flow", "indoor", 268, { f: "Actual", unit: "°C", part: "water" });
   add("pump", "indoor", 381, { f: "Actual", unit: "%", d: 0, part: "pump" });
   add("press", "indoor", 318, { f: "Actual", unit: "bar", part: "press" });
@@ -3028,6 +3038,7 @@ function plantParts(p) {
     refrig: !p.boiler, cond: !p.boiler, boiler: p.boiler,
     bmod: p.boiler && p.modulation, flue: p.boiler && p.flue,
     bfan: p.boiler && p.burnerFan, starts: p.boiler && p.burnerStarts,
+    hours: p.boiler && p.burnerHours, damped: p.boiler && p.dampedOutside,
     fan1: p.fans >= 1, fan2: p.fans >= 2, evap: p.evaporator, eev: p.eev > 0,
     fourway: p.fourWay, comp: !p.boiler, comprps: p.compressorRps, suction: p.suction,
     discharge: p.discharge, oil: p.oil, heatkw: p.heatPower, elw: p.elPower,
@@ -3039,7 +3050,60 @@ function plantParts(p) {
   };
 }
 
+/* A gas boiler: the burner's values inside the casing, the sensors where
+   they sit in the unit -- flow and pressure at the outlet before the
+   diverter valve, flow meter, return and pump in the return (Dreman65,
+   discussion #23). */
+function buildBoilerSvg(p) {
+  const svg = sv("svg", { viewBox: "0 0 1000 420", role: "img", "aria-label": "Anlagenschema" });
+  const g = (part, ...kids) => { const n = sv("g", { "data-part": part }, ...kids); svg.append(n); return n; };
+  const V = (id, x, y, anchor = "middle") => { const t = svText(x, y, "–", "val", anchor); t.id = `pv-${id}`; return t; };
+  const L = (x, y, text, anchor = "middle") => svText(x, y, text, "lbl", anchor);
+
+  svg.append(svPipe("M440,280 H940", "flow"));
+  svg.append(svPipe("M940,280 V130 H440", "ret"));
+  svg.append(svRadiator(940, 205));
+
+  g("boutside", svSensor(90, 150, false), V("boutside", 90, 130), L(90, 176, "Außen"));
+  g("damped", V("damped", 90, 220), L(90, 236, "gedämpft"));
+  g("boiler",
+    sv("rect", { class: "sym", x: 180, y: 90, width: 260, height: 240, rx: 8, fill: "#0b1020" }),
+    L(310, 80, "Brennwertkessel"), svFlame(250, 270));
+  g("bmod", V("mod", 250, 150), L(250, 166, "Modulation"));
+  g("flue", V("flue", 370, 135), L(370, 151, "Abgas"));
+  g("bfan", V("bfan", 370, 190), L(370, 206, "Gebläse"));
+  g("starts", V("starts", 370, 245), L(370, 261, "Brennerstarts"));
+  g("hours", V("hours", 370, 300), L(370, 316, "Brennerstunden"));
+
+  /* return, in the direction of flow: pump, return sensor, flow meter */
+  g("pump", svPump(650, 130, 180), V("pump", 650, 110), L(650, 160, "Pumpe"));
+  g("water",
+    svSensor(570, 130, false), V("ret", 570, 110), L(570, 160, "Rücklauf"),
+    svSensor(490, 280, false), V("flow", 490, 310), L(490, 324, "Vorlauf"));
+  g("massflow", svSensor(495, 130, true), V("massflow", 495, 110), L(495, 160, "Durchfluss"));
+  g("press", svSensor(560, 280, true), V("press", 560, 310), L(560, 324, "Druck"));
+  g("divert", svValve(650, 280), V("divert", 650, 310), L(650, 324, "Umschaltventil"));
+  g("dhw",
+    svPipe("M650,270 V225 H718", "flow"),
+    svPipe("M756,225 H775 V132", "ret"),
+    svTank(720, 197, 34, 56), V("dhw", 737, 192), L(737, 268, "Warmwasser"));
+  g("circ", svPump(830, 225, 0), V("circ", 830, 200), L(830, 255, "Zirkulation"));
+  g("buffer", svTank(868, 177, 34, 56), V("buf", 885, 172), L(885, 248, "Puffer"));
+  [1, 2, 3, 4].forEach((n, i) => {
+    const x = 640 + i * 84;
+    const c = p.circuits.find((k) => k.n === n);
+    const full = c && c.name ? c.name : `Heizkreis ${n}`;
+    const label = full.length > 13 ? full.slice(0, 12) + "…" : full;
+    const lbl = L(x, 365, label);
+    if (label.length > 10) lbl.style.fontSize = "10px";
+    g(`hk${n}`, sv("rect", { class: "sym", x: x - 40, y: 350, width: 80, height: 40, rx: 4, fill: "#0b1020" }),
+      lbl, V(`hk${n}`, x, 383));
+  });
+  return svg;
+}
+
 function buildPlantSvg(p) {
+  if (p.boiler) return buildBoilerSvg(p);
   const svg = sv("svg", { viewBox: "0 0 1000 420", role: "img", "aria-label": "Anlagenschema" });
   const g = (part, ...kids) => { const n = sv("g", { "data-part": part }, ...kids); svg.append(n); return n; };
   const V = (id, x, y, anchor = "middle") => { const t = svText(x, y, "–", "val", anchor); t.id = `pv-${id}`; return t; };
@@ -3059,18 +3123,6 @@ function buildPlantSvg(p) {
 
   g("outside", svSensor(110, 175, false), V("outside", 110, 160), L(110, 196, "Außen"));
 
-  /* A gas boiler where the refrigerant circuit would be: the same water side
-     hangs off its right edge. The burner's values sit inside the casing, the
-     outdoor sensor beside it -- the far left of the picture stays empty
-     rather than stretching a boiler across it. */
-  g("boutside", svSensor(340, 175, false), V("boutside", 340, 160), L(340, 196, "Außen"));
-  g("boiler",
-    sv("rect", { class: "sym", x: 420, y: 120, width: 220, height: 180, rx: 8, fill: "#0b1020" }),
-    L(530, 110, "Brennwertkessel"), svFlame(480, 250));
-  g("bmod", V("mod", 480, 170), L(480, 186, "Modulation"));
-  g("flue", V("flue", 580, 170), L(580, 186, "Abgas"));
-  g("bfan", V("bfan", 580, 225), L(580, 241, "Gebläse"));
-  g("starts", V("starts", 580, 272), L(580, 288, "Brennerstarts"));
   g("fan1", svFan(110, 230), V("fan1", 110, 262));
   g("fan2", svFan(110, 300), V("fan2", 110, 332));
   g("evap", svHx(170, 140, 50, 140), svSensor(195, 300, false), V("evap", 230, 304, "start"), L(195, 130, "Verdampfer"));

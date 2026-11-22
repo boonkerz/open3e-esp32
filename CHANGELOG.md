@@ -39,6 +39,10 @@ bis dahin auf der Flash-Seite lag.
   #23). Die Gebläsedrehzahl kommt vom Brennersteuergerät (`BCU`), wenn es
   eines gibt: der Wert am Master blieb an der 333-F bei laufendem Brenner
   auf 0. Das Bild für Home Assistant bleibt auch ohne Außeneinheit aktuell.
+  Der Kessel hat ein eigenes Bild über die ganze Breite: Vorlauf und Druck
+  sitzen am Kesselausgang vor dem Umschaltventil, Durchfluss, Rücklauf und
+  Pumpe im Rücklauf, rechts ein Heizkörper; dazu Brennerstunden (DID 1346)
+  und die gedämpfte Außentemperatur (2457).
 
 ### Behoben
 

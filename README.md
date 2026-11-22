@@ -475,8 +475,9 @@ Druck, Durchfluss, Warmwasserspeicher, Heizstab, Puffer und Heizkreise.
 
 An einem **Gas-Brennwertgerät** (kein Verdichter, aber Brenner-Datenpunkte
 am Master) steht an Stelle des Kältekreises ein Kessel mit Modulation,
-Abgastemperatur, Gebläsedrehzahl und Brennerstarts; die Wasserseite ist
-dieselbe. Gebaut nach den Daten einer Vitodens 300-W, an einer Vitodens
+Abgastemperatur, Gebläsedrehzahl, Brennerstarts und Brennerstunden, daneben
+die gedämpfte Außentemperatur; die Sensoren der Wasserseite stehen dort, wo
+sie im Gerät sitzen. Gebaut nach den Daten einer Vitodens 300-W, an einer Vitodens
 333-F bestätigt.
 
 **Was der Bus über die Anlage verrät.** Den Modellnamen nicht: DID 377 und
