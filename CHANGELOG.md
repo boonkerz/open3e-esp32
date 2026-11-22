@@ -35,8 +35,10 @@ bis dahin auf der Flash-Seite lag.
   aus DID 1043, das Umschaltventil zeigt „Heizen", „Mitte" oder
   „Warmwasser". Punkte übernehmen und die Karte für Home Assistant
   arbeiten damit wie bei der Wärmepumpe. Gebaut nach den Daten einer
-  Vitodens 300-W B3HG (Diskussion #23), an einem echten Gerät noch nicht
-  geprüft.
+  Vitodens 300-W B3HG und an einer Vitodens 333-F bestätigt (Diskussion
+  #23). Die Gebläsedrehzahl kommt vom Brennersteuergerät (`BCU`), wenn es
+  eines gibt: der Wert am Master blieb an der 333-F bei laufendem Brenner
+  auf 0. Das Bild für Home Assistant bleibt auch ohne Außeneinheit aktuell.
 
 ### Behoben
 

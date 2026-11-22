@@ -27,7 +27,8 @@ static const char *TAG = "plant";
 #define LIVE_SLOTS        CFG_MOUNT "/plant_slots.json"
 
 /* The controller addresses come from the probe the web interface stored:
- * "roles": {"indoor": "0x680", "outdoor": "0x68C"}. */
+ * "roles": {"indoor": "0x680", "outdoor": "0x68C"}. A gas boiler has no
+ * outdoor unit; `*outdoor` is 0 then. */
 static bool plant_roles(uint16_t *indoor, uint16_t *outdoor)
 {
     char *raw = app_config_read_file(CFG_PLANT_PATH);
@@ -39,11 +40,11 @@ static bool plant_roles(uint16_t *indoor, uint16_t *outdoor)
     const cJSON *roles = cJSON_GetObjectItemCaseSensitive(root, "roles");
     const cJSON *ji = roles ? cJSON_GetObjectItemCaseSensitive(roles, "indoor") : NULL;
     const cJSON *jo = roles ? cJSON_GetObjectItemCaseSensitive(roles, "outdoor") : NULL;
-    bool ok = cJSON_IsString(ji) && cJSON_IsString(jo);
+    bool ok = cJSON_IsString(ji);
     if (ok) {
         *indoor = (uint16_t)strtol(ji->valuestring, NULL, 0);
-        *outdoor = (uint16_t)strtol(jo->valuestring, NULL, 0);
-        ok = *indoor && *outdoor;
+        *outdoor = cJSON_IsString(jo) ? (uint16_t)strtol(jo->valuestring, NULL, 0) : 0;
+        ok = *indoor != 0;
     }
     cJSON_Delete(root);
     return ok;
@@ -393,12 +394,12 @@ static void plant_task(void *arg)
             continue;
         }
         double c = 0, w = 0;
-        bool have_comp = read_number(outdoor, DID_COMPRESSOR, NULL, &c);
+        bool have_comp = outdoor && read_number(outdoor, DID_COMPRESSOR, NULL, &c);
         bool have_pump = read_number(indoor, DID_PUMP, "Actual", &w);
         if (!have_comp && !have_pump) {
             continue;
         }
-        ha_disco_plant_state(have_comp ? c > 0 : true, have_pump ? w > 0 : true);
+        ha_disco_plant_state(have_comp ? c > 0 : outdoor != 0, have_pump ? w > 0 : true);
     }
 }
 

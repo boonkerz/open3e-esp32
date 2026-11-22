@@ -2713,6 +2713,7 @@ function plantRoles() {
   roles.indoor = devs.find((d) => d.prop === "HPMUMASTER")
               || devs.find((d) => d.prop === "HMUMASTER")
               || devs.find((d) => hasDid(d, 268) && hasDid(d, 271));
+  roles.burner = devs.find((d) => d.prop === "BCU");
   roles.heater = devs.find((d) => d.prop === "EHCU");
   roles.battery = devs.find((d) => d.prop === "EMCUMASTER" || d.prop === "EMCUSLAVE");
   return roles;
@@ -2839,7 +2840,10 @@ function derivePlant() {
        knows modulation, flue gas or flame statistics. */
     boiler,
     flue: has("indoor", 331),
-    burnerFan: has("indoor", 373),
+    /* The master's 373 is a target that stayed 0 on a running Vitodens
+       333-F; the burner control unit reports the speed (discussion #23). */
+    burnerFan: has("burner", 373) || has("indoor", 373),
+    burnerFanRole: has("burner", 373) ? "burner" : "indoor",
     burnerStarts: has("indoor", 365),
     pressure: fitted("indoor", 318),
     pump: has("indoor", 381),
@@ -2997,7 +3001,7 @@ function plantSlots(p) {
   else add("ret", "indoor", 269, { f: "Actual", unit: "°C", part: "water" });
   add("mod", "indoor", 526, { unit: "%", d: 0, part: "bmod" });
   add("flue", "indoor", 331, { f: "Actual", unit: "°C", part: "flue" });
-  add("bfan", "indoor", 373, { unit: "rpm", d: 0, part: "bfan" });
+  add("bfan", p.burnerFanRole, 373, { unit: "rpm", d: 0, part: "bfan" });
   add("starts", "indoor", 365, { f: "BurnerStarts", unit: "", d: 0, part: "starts" });
   add("flow", "indoor", 268, { f: "Actual", unit: "°C", part: "water" });
   add("pump", "indoor", 381, { f: "Actual", unit: "%", d: 0, part: "pump" });
@@ -3087,8 +3091,8 @@ function buildPlantSvg(p) {
     svSensor(910, 260, false), V("flow", 910, 290), L(910, 304, "Vorlauf"));
   g("divert", svValve(680, 260), V("divert", 680, 290), L(680, 304, "Umschaltventil"));
   g("circ", svPump(960, 210, -90), V("circ", 938, 214, "end"), L(938, 228, "Zirkulation", "end"));
-  g("press", svSensor(765, 260, true), V("press", 765, 290), L(765, 304, "Druck"));
-  g("massflow", svSensor(835, 260, true), V("massflow", 835, 290), L(835, 304, "Durchfluss"));
+  g("press", svSensor(785, 260, true), V("press", 785, 290), L(785, 304, "Druck"));
+  g("massflow", svSensor(848, 260, true), V("massflow", 848, 290), L(848, 304, "Durchfluss"));
   /* The diverter valve's second way: flow up into the tank's coil and back
      out to the return line, so the picture shows where the one pump's water
      goes when hot water is being made. */
