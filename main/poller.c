@@ -80,7 +80,7 @@ static void free_limits(limit_t *l, uint16_t n)
 
 /* Resolve {device} the way open3e's dev_of_addr() does: the user's key for
  * that address, falling back to the hex address. */
-static void device_name_of(uint16_t ecu, char *out, size_t out_sz)
+void poller_device_name(uint16_t ecu, char *out, size_t out_sz)
 {
     snprintf(out, out_sz, "0x%03x", ecu);
     char *sys = app_config_read_file(CFG_SYSTEM_PATH);
@@ -175,7 +175,7 @@ bool poller_reload(void)
         }
 
         char device[48];
-        device_name_of(p->ecu, device, sizeof(device));
+        poller_device_name(p->ecu, device, sizeof(device));
         mqtt_pub_topic(p->topic, sizeof(p->topic), p->ecu, p->did,
                        p->codec->id, device, sel_str(it, "topic"));
 

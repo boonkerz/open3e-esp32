@@ -145,16 +145,22 @@ def load_e3oncan_e380(src: Path):
     it adds O3EcosPhi.
     """
     if not src.is_dir():
-        return {}
+        raise FileNotFoundError(f"E3onCAN sources not found at {src}; "
+                                "run tools/fetch_open3e.py first")
 
     sys.path.insert(0, str(src))
     try:
         import E3onCANdatapointsE380 as e380
-    except Exception as exc:  # noqa: BLE001
-        print(f"warning: could not load the E380 table: {exc}", file=sys.stderr)
-        return {}
+    except ModuleNotFoundError as exc:
+        if exc.name == "udsoncan":
+            raise RuntimeError("E380 requires udsoncan; install it in the Python "
+                               "environment used to generate the database") from exc
+        raise
     finally:
         sys.path.pop(0)
+
+    if not e380.dataIdentifiersE380:
+        raise ValueError(f"E3onCAN E380 table is empty in {src}")
 
     out = {}
     for can_id, codec in e380.dataIdentifiersE380.items():

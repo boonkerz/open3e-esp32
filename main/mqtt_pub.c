@@ -269,7 +269,9 @@ static void on_mqtt_event(void *arg, esp_event_base_t base, int32_t id, void *da
         stats.reconnects++;
         ESP_LOGI(TAG, "connected");
         /* open3e publishes a retained online/offline flag on <base>/LWT. */
-        esp_mqtt_client_publish(client, lwt_topic, "online", 0, 0, 1);
+        if (!mqtt_pub_raw(lwt_topic, "online", true)) {
+            ESP_LOGE(TAG, "could not publish retained online status");
+        }
         mqtt_cfg_t cfg;
         mqtt_cfg_get(&cfg);
         if (cfg.cmnd_topic[0]) {

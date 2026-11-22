@@ -14,9 +14,9 @@ Ablauf aus Anwendersicht:
 3. Im Web-UI einen Bus-Scan starten → gefundene ECUs und Datenpunkte erscheinen.
 4. Pro Datenpunkt festlegen, ob und auf welches MQTT-Topic er gesendet wird.
 
-Die Topics, Payloads, der LWT und das Kommando-Topic folgen
-[open3e](https://github.com/open3e/open3e). Ein bestehendes Broker-Setup oder
-Home-Assistant-Template läuft unverändert weiter.
+Die Topics, Payloads, der LWT und das Kommando-Topic orientieren sich an
+[open3e](https://github.com/open3e/open3e). Einschränkungen des Kommando-Listeners
+sind unter [Kommandos](#kommandos) beschrieben.
 
 ---
 
@@ -336,6 +336,17 @@ make setup          # Python-venv anlegen, open3e holen
 make db             # data/o3edb.bin erzeugen  (~1,6 MB)
 ```
 
+Unter Windows ohne `make` und mit aktiviertem Python-Environment:
+
+```powershell
+python -m pip install udsoncan
+python tools\fetch_open3e.py
+python tools\gen_dpdb.py -o data\o3edb.bin
+```
+
+Die Ausgabe muss **14 E380 frames** melden. Fehlen die E3onCAN-Quellen oder
+`udsoncan`, bricht die Erzeugung ab, statt eine Datenbank ohne E380 abzulegen.
+
 `make storage` ist nur nötig, wenn man das Ergebnis ohne ESP-IDF ansehen will —
 der Firmware-Build ruft `tools/build_fs.py` selbst auf.
 
@@ -597,19 +608,59 @@ deshalb ist es aus, solange niemand es einschaltet.
 
 ### Kommandos
 
-Auf `open3e/cmnd` (einstellbar) wird das Schema von open3es Listener akzeptiert:
+Auf `open3e/cmnd` (einstellbar) werden unter anderem diese Kommandos akzeptiert:
 
 ```json
 {"mode": "read",  "data": [268, 269], "addr": "0x680"}
-{"mode": "write", "data": {"396": {"Comfort": 22.0}}, "addr": "0x680"}
+{"mode": "read-json", "data": [256, "0x6a1.[257,259]", "0x6a1.256.BusType"]}
+{"mode": "write", "data": [[396, {"Comfort": 22.0}]], "addr": "0x680"}
+{"mode": "write", "data": [["396.Comfort", 22.0]], "addr": "0x680"}
+{"mode": "system"}
 ```
 
-Antworten von `read` landen auf demselben Topic wie eine planmäßige Abfrage,
-Fehler auf `open3e/ERR`. Die Raw-Modi von open3es Listener sind hier bewusst
-nicht implementiert — der Sinn dieses Kommandokanals ist die dekodierte
-Sicht, und ein Raw-Write ist der einfachste Weg, eine Heizung in einen
-ungewollten Zustand zu bringen. Für Software mit eigener Datenpunkt-Datenbank
-gibt es dennoch einen expliziten, separaten Rohdaten-Zugang, siehe
+`read` und `read-json` verhalten sich hier gleich und veröffentlichen JSON,
+`read-raw` die Rohbytes als Hexstring und `read-pure` die Rohbytes auf einem
+`DID_<Nummer>:len=<Länge>`-Topic. `read-all` und `read-all-json` verhalten
+sich ebenfalls gleich und lesen die im Scan gefundenen DIDs der adressierten
+ECU. Ohne Scan oder ohne DIDs für diese ECU wird ein Fehler gemeldet. In der
+lokalen Datenbank unbekannte DIDs werden als Rohdaten mit dem Namen
+`DID_<Nummer>` veröffentlicht. Auch dies kann lange dauern und blockiert die
+Kommando-Queue.
+
+Adressen und Teilfelder können wie oben angegeben werden; ohne `addr` gilt die
+erste gescannte ECU, sonst `0x680`. Wie bei open3e wird bei einer Teilfeld-Abfrage
+der Feldname als `{didName}` verwendet: `0x680.2760.Today` veröffentlicht mit
+dem Standardformat auf `open3e/Today`. Gleichnamige Felder verschiedener DIDs
+können deshalb auf demselben Topic landen; `{didNumber}_{didName}` unterscheidet
+sie. Das bisherige Schreibformat `{"396": 22.0}` bleibt ebenfalls möglich.
+Schreiben erfordert weiterhin die Freigabe und einen als schreibbar markierten
+Datenpunkt; eingestellte Grenzen bleiben wirksam.
+
+`system` veröffentlicht nicht retained auf `open3e/system` die erkannten Geräte
+und ihre beim DID-Scan gefundenen bekannten Datenpunkte mit den zugehörigen
+MQTT-Topics.
+Für open3e-ha zuerst einen ECU- und DID-Scan durchführen. Die MQTT-Verbindung
+zum Broker und das Kommando-Topic müssen aktiv sein; die regelmäßige MQTT-
+Veröffentlichung einzelner Datenpunkte über die Datenauswahl muss nicht
+eingeschaltet werden. open3e-ha fordert die Werte selbst mit `read-json` an.
+Bei Verwendung von open3e-ha wird empfohlen, die MQTT-Auto-Discovery der
+Firmware auszuschalten, um doppelte Home-Assistant-Entitäten zu vermeiden.
+Beide Integrationen können parallel laufen, wenn dies ausdrücklich gewünscht ist.
+
+Für die mit open3e-ha übliche Topic-Benennung und zur Vermeidung von
+Kollisionen wird als MQTT-Formatstring empfohlen:
+`{device}_{ecuAddr:03X}_{didNumber}_{didName}`. Dieser wird von der Firmware
+unterstützt. Ihr Standard bleibt `{didName}`; open3e-ha übernimmt die Topics
+aus der `system`-Antwort, sodass das empfohlene Format nicht zwingend
+erforderlich ist. Der Standard kann jedoch insbesondere bei mehreren ECUs
+identische Topics für gleichnamige Datenpunkte erzeugen. Eine Änderung des
+Formatstrings ändert die Topics auch für andere MQTT-Clients; open3e-ha danach
+neu laden, damit es die aktualisierte `system`-Antwort erhält.
+
+Fehler erscheinen auf `open3e/ERR`. Rohschreibkommandos und die experimentellen
+Service-0x77-Kommandos sind über MQTT nicht verfügbar. Damit funktionieren
+open3e-ha-Funktionen, die `write-raw` benötigen, nicht. Für Software mit eigener
+Datenpunkt-Datenbank gibt es einen separaten Rohdaten-Zugang, siehe
 [Rohdaten für externe Integrationen](#rohdaten-für-externe-integrationen).
 
 ### Home Assistant

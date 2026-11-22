@@ -11,7 +11,27 @@ bis dahin auf der Flash-Seite lag.
 
 ## Unveröffentlicht
 
+### Hinzugefügt
+
+- **MQTT-Kommandos für open3e-ha.** `system` veröffentlicht erkannte
+  Geräte und beim DID-Scan gefundene bekannte Datenpunkte mit ihren Topics
+  auf `<Basis>/system`. Neu sind außerdem `read-json`, `read-raw`,
+  `read-pure`, `read-all` und `read-all-json` sowie ECU- und Teilfeldadressen
+  und Schreibbefehle als `[DID, Wert]`-Paare. Die bisherige Schreibweise als
+  Objekt bleibt erhalten. Der retained LWT mit `online`/`offline` bleibt
+  bestehen; Fehler beim Veröffentlichen von `online` werden protokolliert.
+  Raw-Schreibbefehle und Service `0x77` bleiben deaktiviert, daher sind
+  open3e-ha-Funktionen, die `write-raw` benötigen, nicht verfügbar.
+  `read` und `read-json` liefern beide JSON; `read-all` und `read-all-json`
+  lesen beide die im Scan gefundenen DIDs der gewählten ECU. Ohne Scan-Ergebnis
+  für diese ECU wird ein Fehler gemeldet. Einzelheiten und Einrichtung stehen
+  unter [MQTT](README.md#mqtt).
+
 ### Behoben
+
+- **E380-Definitionen in der Datenbank.** Der Datenbankgenerator bricht nun
+  bei fehlenden E3onCAN-Quellen, fehlendem `udsoncan` oder einer leeren
+  E380-Tabelle ab, statt eine Datenbank ohne E380-Frames zu erzeugen.
 
 - **Karte „Steuern": Häkchen, Name und Datenpunkt standen untereinander**
   statt in einer Zeile.
@@ -80,7 +100,6 @@ noch nicht erprobt.
   und geprüft, bevor etwas Laufendes angefasst wird; ein abgebrochener
   Transfer ändert nichts. Ohne frische Sicherung (eine Stunde) lehnt das
   Gerät das Update ab.
-
 - **Schreibgrenzen je Datenpunkt.** Neue Spalte „Grenzen" in der
   Datenpunkttabelle (`10..60`, `..60`, `Comfort: 10..60`; Feld `range` in
   `points.json`). Home Assistant bekommt den Bereich als `min`/`max` seiner
