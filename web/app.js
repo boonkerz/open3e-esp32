@@ -1905,7 +1905,7 @@ function initApp() {
     }
   };
   $("plant-ha-download").onclick = () => {
-    if (!plantProfile || !plantProfile.outdoor) return;
+    if (!plantProfile || !plantProfile.drawable) return;
     const blob = new Blob([plantBackgroundSvg(plantProfile)], { type: "image/svg+xml" });
     const a = el("a", { href: URL.createObjectURL(blob), download: "plant.svg" });
     document.body.append(a);
@@ -2674,6 +2674,8 @@ const MODEL_TABLE = {
   /* lingej, open3e-esp32 discussion #22 */
   "7974983": { family: "Vitocal 150-A", unit: "Innengerät AWMIW.A1.19" },
   "7988252": { family: "Vitocal 150-A", unit: "Außeneinheit AWMOF-151.A1.13, 400 V" },
+  /* Dreman65, open3e-esp32 discussion #23 */
+  "7956286": { family: "Vitodens 300-W", unit: "B3HG" },
 };
 
 /* Datapoints the probe reads, by controller role. Only those the scan lists
@@ -2699,8 +2701,13 @@ function plantRoles() {
   const roles = {};
   const hasDid = (d, did) => d.dids.some((x) => x[0] === did);
   const devs = system.devices || [];
+  /* Backend gateways and the room-control unit answer for every datapoint
+     the database knows, with zeroes -- 1564 of them on a Vitodens 300-W
+     (discussion #23). Taking one for the outdoor unit turned a gas boiler
+     into a heat pump with a refrigerant circuit full of zeroes. */
+  const real = (d) => !/GATEWAY|SMARTROOM|HMI/.test(d.prop || "") && d.dids.length < 1000;
   roles.outdoor = devs.find((d) => d.prop === "VCMU" && hasDid(d, 2346))
-               || devs.find((d) => hasDid(d, 2346) || hasDid(d, 2569));
+               || devs.find((d) => real(d) && (hasDid(d, 2346) || hasDid(d, 2569)));
   roles.indoor = devs.find((d) => d.prop === "HPMUMASTER")
               || devs.find((d) => d.prop === "HMUMASTER")
               || devs.find((d) => hasDid(d, 268) && hasDid(d, 271));
@@ -2793,13 +2800,16 @@ function derivePlant() {
   const heaterPower = plantVal("indoor", 2574);
   const fan2 = plantVal("outdoor", 1776);
   const dhwLayers = [3234, 3233, 3232].filter((d) => fitted("indoor", d));
+  const boiler = !roles.outdoor && !!roles.indoor
+                 && (has("indoor", 526) || has("indoor", 331) || has("indoor", 365));
   return {
     roles, probed,
-    model: plantModel(roles),
+    model: plantModel(roles).replace(/^Wärmeerzeuger/, boiler ? "Gas-Brennwertgerät" : "Wärmeerzeuger"),
     nominalW: plantVal("indoor", 2342) || plantVal("outdoor", 2342) || 0,
     serialIndoor: plantVal("indoor", 377) || "",
     serialOutdoor: plantVal("outdoor", 377) || "",
     outdoor: !!roles.outdoor,
+    drawable: !!roles.outdoor || boiler,
     fans: (has("outdoor", 1775) ? 1 : 0) + (has("outdoor", 1776) && fan2 !== 255 && fan2 !== undefined ? 1 : 0),
     eev: [388, 390].filter((d) => has("outdoor", d)).length,
     fourWay: has("outdoor", 1773),
@@ -2821,7 +2831,14 @@ function derivePlant() {
        datapoint and measures with the Allengra sensor on 1043 instead
        (Vitodens 333-F, discussion #23). */
     flowSensor: fitted("indoor", 376) || (!has("indoor", 376) && has("indoor", 1043)),
+    flowDid: has("indoor", 376) ? 376 : 1043,
     modulation: has("indoor", 526),
+    /* A burner instead of a compressor: no outdoor unit, and the master
+       knows modulation, flue gas or flame statistics. */
+    boiler,
+    flue: has("indoor", 331),
+    burnerFan: has("indoor", 373),
+    burnerStarts: has("indoor", 365),
     pressure: fitted("indoor", 318),
     pump: has("indoor", 381),
     actors,
@@ -2941,6 +2958,10 @@ function svTank(x, y, w, h) {
 function svHeater(x, y) {
   return sv("path", { class: "sym", d: `M${x - 8},${y + 14} V${y - 6} q 0,-8 8,-8 q 8,0 8,8 V${y + 14} M${x},${y + 14} V${y - 2}` });
 }
+function svFlame(x, y) {
+  return sv("path", { class: "sym", stroke: "#f97316",
+    d: `M${x},${y - 34} c 14,14 22,24 22,38 a 22,22 0 0 1 -44,0 c 0,-10 6,-16 10,-24 c 2,8 6,10 8,10 c 2,-8 0,-16 4,-24 Z` });
+}
 function svCompressor(x, y) {
   return sv("g", { class: "sym" },
     sv("circle", { cx: x, cy: y, r: 24, fill: "#0b1020" }),
@@ -2953,6 +2974,7 @@ function plantSlots(p) {
   const S = [];
   const add = (id, role, did, o = {}) => S.push({ id, role, did, ...o });
   add("outside", "indoor", 274, { f: "Actual", unit: "°C", part: "outside" });
+  add("boutside", "indoor", 274, { f: "Actual", unit: "°C", part: "boutside" });
   add("fan1", "outdoor", 1775, { unit: "%", part: "fan1" });
   add("fan2", "outdoor", 1776, { unit: "%", part: "fan2" });
   add("evap", "outdoor", 2334, { f: "Actual", unit: "°C", part: "evap" });
@@ -2967,15 +2989,28 @@ function plantSlots(p) {
   add("oil", "outdoor", 1772, { f: "Actual", unit: "°C", part: "oil" });
   add("heatkw", "indoor", 2494, { unit: "kW", scale: 0.001, part: "heatkw" });
   add("elw", "indoor", 2486, { unit: "W", d: 0, part: "elw" });
-  add("ret", "indoor", 269, { f: "Actual", unit: "°C", part: "water" });
+  /* A boiler has no return sensor of its own; the flow meter measures the
+     temperature of the water passing through it, which is the return. */
+  if (p.boiler && p.flowDid === 1043) add("ret", "indoor", 1043, { f: "Temperature", unit: "°C", part: "water" });
+  else add("ret", "indoor", 269, { f: "Actual", unit: "°C", part: "water" });
+  add("mod", "indoor", 526, { unit: "%", d: 0, part: "bmod" });
+  add("flue", "indoor", 331, { f: "Actual", unit: "°C", part: "flue" });
+  add("bfan", "indoor", 373, { unit: "rpm", d: 0, part: "bfan" });
+  add("starts", "indoor", 365, { f: "BurnerStarts", unit: "", d: 0, part: "starts" });
   add("flow", "indoor", 268, { f: "Actual", unit: "°C", part: "water" });
   add("pump", "indoor", 381, { f: "Actual", unit: "%", d: 0, part: "pump" });
   add("press", "indoor", 318, { f: "Actual", unit: "bar", part: "press" });
-  add("massflow", "indoor", 376, { f: "Actual", unit: "l/h", d: 0, part: "massflow" });
+  add("massflow", "indoor", p.flowDid, { f: "Actual", unit: "l/h", d: 0, part: "massflow" });
   add("dhw", "indoor", p.dhwDid, { f: "Actual", unit: "°C", part: "dhw" });
   add("heater", "indoor", 2487, { unit: "W", d: 0, part: "heater" });
   add("circ", "indoor", 491, { f: "State", unit: "", part: "circ", map: { 0: "aus", 1: "ein" } });
-  if (p.diverter) add("divert", "indoor", p.diverter, { f: p.diverter === 1842 ? "CurrentPosition" : undefined, unit: "%", part: "divert" });
+  if (p.diverter && p.boiler) {
+    /* Three positions, not a percentage (Vitodens 300-W). */
+    add("divert", "indoor", p.diverter, { unit: "", part: "divert",
+                                           map: { 0: "Heizen", 1: "Mitte", 2: "Warmwasser" } });
+  } else if (p.diverter) {
+    add("divert", "indoor", p.diverter, { f: p.diverter === 1842 ? "CurrentPosition" : undefined, unit: "%", part: "divert" });
+  }
   if (p.buffer.length) add("buf", "indoor", p.buffer[0], { f: "Actual", unit: "°C", part: "buffer" });
   for (const c of p.circuits) add(`hk${c.n}`, "indoor", c.flowDid, { f: "Actual", unit: "°C", part: `hk${c.n}` });
   return S;
@@ -2983,8 +3018,12 @@ function plantSlots(p) {
 
 function plantParts(p) {
   return {
-    outside: true, fan1: p.fans >= 1, fan2: p.fans >= 2, evap: p.evaporator, eev: p.eev > 0,
-    fourway: p.fourWay, comp: true, comprps: p.compressorRps, suction: p.suction,
+    outside: !p.boiler, boutside: p.boiler,
+    refrig: !p.boiler, cond: !p.boiler, boiler: p.boiler,
+    bmod: p.boiler && p.modulation, flue: p.boiler && p.flue,
+    bfan: p.boiler && p.burnerFan, starts: p.boiler && p.burnerStarts,
+    fan1: p.fans >= 1, fan2: p.fans >= 2, evap: p.evaporator, eev: p.eev > 0,
+    fourway: p.fourWay, comp: !p.boiler, comprps: p.compressorRps, suction: p.suction,
     discharge: p.discharge, oil: p.oil, heatkw: p.heatPower, elw: p.elPower,
     water: true, pump: p.pump, press: p.pressure, massflow: p.flowSensor,
     dhw: p.dhw, heater: p.heater, buffer: p.buffer.length > 0,
@@ -3001,10 +3040,11 @@ function buildPlantSvg(p) {
   const L = (x, y, text, anchor = "middle") => svText(x, y, text, "lbl", anchor);
 
   /* refrigerant: liquid line along the top, suction along the bottom */
-  svg.append(svPipe("M620,140 V100 H335", "hi"));           /* condenser -> EEV */
-  svg.append(svPipe("M325,100 H195 V140", "lo"));           /* EEV -> evaporator */
-  svg.append(svPipe("M195,280 V350 H424", "lo"));           /* evaporator -> compressor */
-  svg.append(svPipe("M476,350 H620 V280", "hi"));           /* compressor -> condenser */
+  g("refrig",
+    svPipe("M620,140 V100 H335", "hi"),           /* condenser -> EEV */
+    svPipe("M325,100 H195 V140", "lo"),           /* EEV -> evaporator */
+    svPipe("M195,280 V350 H424", "lo"),           /* evaporator -> compressor */
+    svPipe("M476,350 H620 V280", "hi"));          /* compressor -> condenser */
   /* heating water: flow at the bottom towards the consumers, return along
      the right and the top back into the condenser; drawn in flow direction
      so the animation runs the right way */
@@ -3012,6 +3052,19 @@ function buildPlantSvg(p) {
   svg.append(svPipe("M960,260 V160 H640", "ret"));
 
   g("outside", svSensor(110, 175, false), V("outside", 110, 160), L(110, 196, "Außen"));
+
+  /* A gas boiler where the refrigerant circuit would be: the same water side
+     hangs off its right edge. The burner's values sit inside the casing, the
+     outdoor sensor beside it -- the far left of the picture stays empty
+     rather than stretching a boiler across it. */
+  g("boutside", svSensor(340, 175, false), V("boutside", 340, 160), L(340, 196, "Außen"));
+  g("boiler",
+    sv("rect", { class: "sym", x: 420, y: 120, width: 220, height: 180, rx: 8, fill: "#0b1020" }),
+    L(530, 110, "Brennwertkessel"), svFlame(480, 250));
+  g("bmod", V("mod", 480, 170), L(480, 186, "Modulation"));
+  g("flue", V("flue", 580, 170), L(580, 186, "Abgas"));
+  g("bfan", V("bfan", 580, 225), L(580, 241, "Gebläse"));
+  g("starts", V("starts", 580, 272), L(580, 288, "Brennerstarts"));
   g("fan1", svFan(110, 230), V("fan1", 110, 262));
   g("fan2", svFan(110, 300), V("fan2", 110, 332));
   g("evap", svHx(170, 140, 50, 140), svSensor(195, 300, false), V("evap", 230, 304, "start"), L(195, 130, "Verdampfer"));
@@ -3022,18 +3075,18 @@ function buildPlantSvg(p) {
   g("oil", L(500, 304, "Öl", "start"), V("oil", 500, 318, "start"));
   g("suction", svSensor(290, 350, false), V("suctT", 290, 378), svSensor(360, 350, true), V("suctP", 360, 378));
   g("discharge", svSensor(515, 350, false), V("dischT", 515, 378), svSensor(585, 350, true), V("dischP", 585, 378));
-  svg.append(svHx(600, 140, 40, 140), L(620, 130, "Verflüssiger"));
+  g("cond", svHx(600, 140, 40, 140), L(620, 130, "Verflüssiger"));
   g("heatkw", V("heatkw", 585, 215, "end"), L(585, 229, "Wärme", "end"));
   g("elw", V("elw", 585, 250, "end"), L(585, 264, "elektrisch", "end"));
 
   g("pump", svPump(690, 160, 180), V("pump", 690, 140), L(690, 190, "Pumpe"));
   g("water",
     svSensor(900, 160, false), V("ret", 900, 140), L(900, 190, "Rücklauf"),
-    svSensor(900, 260, false), V("flow", 900, 290), L(900, 304, "Vorlauf"));
+    svSensor(910, 260, false), V("flow", 910, 290), L(910, 304, "Vorlauf"));
   g("divert", svValve(680, 260), V("divert", 680, 290), L(680, 304, "Umschaltventil"));
   g("circ", svPump(960, 210, -90), V("circ", 938, 214, "end"), L(938, 228, "Zirkulation", "end"));
-  g("press", svSensor(800, 260, true), V("press", 800, 290), L(800, 304, "Druck"));
-  g("massflow", svSensor(860, 260, true), V("massflow", 860, 290), L(860, 304, "Durchfluss"));
+  g("press", svSensor(765, 260, true), V("press", 765, 290), L(765, 304, "Druck"));
+  g("massflow", svSensor(835, 260, true), V("massflow", 835, 290), L(835, 304, "Durchfluss"));
   /* The diverter valve's second way: flow up into the tank's coil and back
      out to the return line, so the picture shows where the one pump's water
      goes when hot water is being made. */
@@ -3287,8 +3340,8 @@ function renderPlant() {
   }
   $("plant-msg").textContent = plant.at ? `Sondiert am ${new Date(plant.at).toLocaleString("de-DE")}` : "";
 
-  if (!p.outdoor) {
-    $("plant-note").textContent = "Kein Verdichter im Scan: dafür gibt es noch kein Schema.";
+  if (!p.drawable) {
+    $("plant-note").textContent = "Weder Verdichter noch Brenner im Scan: dafür gibt es noch kein Schema.";
     return;
   }
   const svg = buildPlantSvg(p);
@@ -3308,7 +3361,7 @@ function renderPlant() {
 
 function plantActiveSlots(profile) {
   const p = profile || plantProfile;
-  if (!p || !p.outdoor) return [];
+  if (!p || !p.drawable) return [];
   const parts = plantParts(p);
   return plantSlots(p).filter((s) => parts[s.part] && p.roles[s.role]
                                     && plantHas(p.roles, s.role, s.did));
@@ -3367,7 +3420,7 @@ function plantHaEntity(slot) {
    keep their interval and mode; only the flag is switched on. */
 async function plantHaPoints(btn) {
   const p = plantProfile;
-  if (!p || !p.outdoor) return;
+  if (!p || !p.drawable) return;
   btn.disabled = true;
   let added = 0, flagged = 0;
   try {
@@ -3456,7 +3509,7 @@ async function plantPut(path, body) {
 
 async function plantHaCard(btn) {
   const p = plantProfile;
-  if (!p || !p.outdoor) return;
+  if (!p || !p.drawable) return;
   btn.disabled = true;
   try {
     await plantPut("/api/plant/svg", plantBackgroundSvg(p));

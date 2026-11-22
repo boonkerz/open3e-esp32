@@ -473,6 +473,12 @@ und Hochdruckseite (Temperatur und Druck), Öltemperatur, Vierwegeventil,
 Verflüssiger mit Wärme- und elektrischer Leistung, Pumpe, Vor- und Rücklauf,
 Druck, Durchfluss, Warmwasserspeicher, Heizstab, Puffer und Heizkreise.
 
+An einem **Gas-Brennwertgerät** (kein Verdichter, aber Brenner-Datenpunkte
+am Master) steht an Stelle des Kältekreises ein Kessel mit Modulation,
+Abgastemperatur, Gebläsedrehzahl und Brennerstarts; die Wasserseite ist
+dieselbe. Gebaut nach den Daten einer Vitodens 300-W, an einem echten Gerät
+noch nicht geprüft.
+
 **Was der Bus über die Anlage verrät.** Den Modellnamen nicht: DID 377 und
 2829 enthalten nur die Seriennummer, 963 (Ersatzteilnummer) wird abgelehnt.
 Lesbar sind die Nennwärmeleistung (2342), Verdichtertyp (2570) und
@@ -483,6 +489,8 @@ sich erkennen, aus drei Quellen:
    (Wärmepumpe) oder `HMUMASTER` (Kessel), Außeneinheit, wer den Verdichter
    (2346) meldet, bei einer Split-Anlage die `VCMU`, bei einem Monoblock der
    Master selbst; `EHCU` ist der Heizstab, `EMCU` der Stromspeicher.
+   Backend-Gateway und Raumregelung zählen dabei nicht: sie beantworten an
+   manchen Anlagen jeden Datenpunkt der Datenbank, mit Nullen.
 2. **Was der Scan nicht auflistet, gibt es nicht.** Puffer-, Solar- oder
    Durchflusssensor-Datenpunkte, die eine Anlage nicht hat, beantwortet sie
    mit `conditionsNotCorrect` und fehlen im Scan.

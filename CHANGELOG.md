@@ -27,7 +27,27 @@ bis dahin auf der Flash-Seite lag.
   für diese ECU wird ein Fehler gemeldet. Einzelheiten und Einrichtung stehen
   unter [MQTT](README.md#mqtt).
 
+- **Schema für Gas-Brennwertgeräte im Reiter „Anlage".** Ohne Außeneinheit,
+  aber mit Brenner im Scan zeichnet der Reiter statt des Kältekreises einen
+  Kessel mit Modulation (DID 526), Abgastemperatur (331), Gebläsedrehzahl
+  (373) und Brennerstarts (365), soweit das Gerät sie kennt. Die
+  Wasserseite bleibt dieselbe; Durchfluss und Rücklauftemperatur kommen
+  aus DID 1043, das Umschaltventil zeigt „Heizen", „Mitte" oder
+  „Warmwasser". Punkte übernehmen und die Karte für Home Assistant
+  arbeiten damit wie bei der Wärmepumpe. Gebaut nach den Daten einer
+  Vitodens 300-W B3HG (Diskussion #23), an einem echten Gerät noch nicht
+  geprüft.
+
 ### Behoben
+
+- **Gas-Brennwertgerät als Wärmepumpe erkannt.** Backend-Gateway und
+  Raumregelung beantworten an manchen Anlagen jeden Datenpunkt der
+  Datenbank mit Nullen; der Reiter „Anlage" hielt ein solches Gerät für
+  die Außeneinheit und zeigte an einer Vitodens 300-W einen Kältekreis
+  voller Nullen (Diskussion #23). Solche Geräte kommen als Außeneinheit
+  nicht mehr in Frage.
+- **Reiter „Anlage": „Durchfluss" und „Vorlauf" überlagerten sich** im
+  Bild.
 
 - **E380-Definitionen in der Datenbank.** Der Datenbankgenerator bricht nun
   bei fehlenden E3onCAN-Quellen, fehlendem `udsoncan` oder einer leeren
