@@ -30,6 +30,9 @@ void ha_disco_plant_image(bool clear);
 /* Which circuits are moving. The picture goes out again only when this
  * changes; idle circuits get their animation switched off inside the SVG. */
 void ha_disco_plant_state(bool compressor_running, bool pump_running);
+/* A boiler's diverter valve: 0 heating, 2 hot water, anything else unknown or
+ * in between. Only the way in use moves in the picture. */
+void ha_disco_plant_valve(int position);
 
 /* The picture with the values already in it, rendered by plant_image.c:
  * retained on <base>/plant/live and announced as a second image entity.

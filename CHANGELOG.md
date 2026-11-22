@@ -44,9 +44,11 @@ bis dahin auf der Flash-Seite lag.
   Pumpe im Rücklauf, rechts ein Heizkörper; dazu Brennerstunden (DID 1346)
   und die gedämpfte Außentemperatur (2457).
   Mit Solarthermie kommt ein Kollektor am Speicher dazu, mit Kollektor-
-  (273) und unterer Speichertemperatur (275). Im Bild des Reiters bewegt
-  sich nur der Weg, auf den das Umschaltventil gerade stellt: Heizkreis
-  oder Warmwasserspeicher.
+  (273) und unterer Speichertemperatur (275). Es bewegt sich nur der Weg,
+  auf den das Umschaltventil gerade stellt, Heizkreis oder
+  Warmwasserspeicher: im Reiter und im Bild für Home Assistant, das die
+  Firmware dafür alle 30 Sekunden nach der Ventilstellung fragt. Für das
+  Bild in Home Assistant die Karte einmal neu erzeugen.
 
 ### Behoben
 

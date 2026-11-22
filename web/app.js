@@ -3069,7 +3069,12 @@ function buildBoilerSvg(p) {
   /* The diverter valve sends the one pump's water either through the
      radiators or through the tank; each way is its own piece of pipe, so
      only the one in use moves. */
-  const leg = (d, cls, which) => { const n = svPipe(d, cls); n.dataset.leg = which; return n; };
+  const leg = (d, cls, which) => {
+    const n = svPipe(d, cls);
+    n.dataset.leg = which;
+    n.classList.add(`leg-${which}`);   /* the firmware stops a way by this class */
+    return n;
+  };
   svg.append(svPipe("M440,280 H650", "flow"));
   svg.append(leg("M650,280 H940", "flow", "hk"));
   svg.append(leg("M940,280 V130 H775", "ret", "hk"));

@@ -21,6 +21,7 @@ static const char *TAG = "plant";
 #define PLANT_PERIOD_MS   30000
 #define LIVE_EVERY        2      /* cycles: the filled picture every minute */
 #define DID_COMPRESSOR    2346   /* CompressorSpeedPercent, on the outdoor unit */
+#define DID_DIVERTER      386    /* DiverterValveTargetPosition, boilers: 0, 1, 2 */
 #define DID_PUMP          381    /* CentralHeatingPump {State, TargetValue, Actual} */
 
 #define LIVE_TEMPLATE     CFG_WWW_DIR "/plant_live.svg"
@@ -134,7 +135,7 @@ static void slot_text(const cJSON *slot, const cJSON *v, char *out, size_t out_s
 
 /* Fill the template: every {{id}} becomes the text of the slot with that id.
  * Reads happen one after another on the bus, like the web interface does. */
-static bool render_live(bool *comp_running, bool *pump_running)
+static bool render_live(bool *comp_running, bool *pump_running, int *valve)
 {
     char *tpl = app_config_read_file(LIVE_TEMPLATE);
     if (!tpl || strncmp(tpl, "<svg", 4) != 0) {
@@ -175,6 +176,12 @@ static bool render_live(bool *comp_running, bool *pump_running)
         }
         if (v && strcmp(jid->valuestring, "pump") == 0 && slot_number(v, "Actual", &x)) {
             *pump_running = x > 0;
+        }
+        /* Positions rather than a percentage: the slot carries a map then. */
+        if (v && strcmp(jid->valuestring, "divert") == 0
+            && cJSON_IsObject(cJSON_GetObjectItemCaseSensitive(slot, "map"))
+            && slot_number(v, NULL, &x)) {
+            *valve = (int)x;
         }
         cJSON_Delete(v);
     }
@@ -388,9 +395,11 @@ static void plant_task(void *arg)
          * picture that moves is less misleading than one that stops on a
          * bus hiccup. */
         bool comp = true, pump = true;
-        if (cycle % LIVE_EVERY == 0 && render_live(&comp, &pump)) {
-            /* The filled picture already read compressor and pump. */
-            ha_disco_plant_state(comp, pump);
+        int valve = -1;
+        if (cycle % LIVE_EVERY == 0 && render_live(&comp, &pump, &valve)) {
+            /* The filled picture already read compressor, pump and valve. */
+            ha_disco_plant_state(outdoor ? comp : false, pump);
+            ha_disco_plant_valve(valve);
             continue;
         }
         double c = 0, w = 0;
@@ -400,6 +409,10 @@ static void plant_task(void *arg)
             continue;
         }
         ha_disco_plant_state(have_comp ? c > 0 : outdoor != 0, have_pump ? w > 0 : true);
+        double pos = 0;
+        if (!outdoor) {
+            ha_disco_plant_valve(read_number(indoor, DID_DIVERTER, NULL, &pos) ? (int)pos : -1);
+        }
     }
 }
 
