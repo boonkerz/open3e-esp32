@@ -43,6 +43,10 @@ bis dahin auf der Flash-Seite lag.
   sitzen am Kesselausgang vor dem Umschaltventil, Durchfluss, Rücklauf und
   Pumpe im Rücklauf, rechts ein Heizkörper; dazu Brennerstunden (DID 1346)
   und die gedämpfte Außentemperatur (2457).
+  Mit Solarthermie kommt ein Kollektor am Speicher dazu, mit Kollektor-
+  (273) und unterer Speichertemperatur (275). Im Bild des Reiters bewegt
+  sich nur der Weg, auf den das Umschaltventil gerade stellt: Heizkreis
+  oder Warmwasserspeicher.
 
 ### Behoben
 
@@ -54,6 +58,10 @@ bis dahin auf der Flash-Seite lag.
   nicht mehr in Frage.
 - **Reiter „Anlage": „Durchfluss" und „Vorlauf" überlagerten sich** im
   Bild.
+- **Reiter „Anlage": Heizkreise, die es nicht gibt.** Eine Vitodens 343-F
+  meldet für nicht vorhandene Heizkreise die Betriebsart „Heating" mit
+  einem Zustand außerhalb der Tabelle; sie standen mit 127,0 °C im Bild
+  (Diskussion #23).
 
 - **E380-Definitionen in der Datenbank.** Der Datenbankgenerator bricht nun
   bei fehlenden E3onCAN-Quellen, fehlendem `udsoncan` oder einer leeren

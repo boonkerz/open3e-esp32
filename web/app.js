@@ -2785,7 +2785,10 @@ function derivePlant() {
     const flowDid = 284 + 2 * i;
     const op = plantVal("indoor", 1415 + i);
     const prop = plantVal("indoor", 933 + i);
-    const on = fitted("indoor", flowDid) || (op && op.Mode && op.Mode.ID !== 0);
+    /* A Vitodens 343-F reports "Heating" for circuits it does not have,
+       with a state outside the table (255) and no sensor (discussion #23). */
+    const on = fitted("indoor", flowDid)
+               || (op && op.Mode && op.Mode.ID !== 0 && !(op.State && op.State.ID === 255));
     if (on) {
       const name = plantVal("indoor", 627 + i);
       circuits.push({
@@ -2973,7 +2976,7 @@ function svRadiator(x, y) {
     sv("path", { d: fins }));
 }
 function svFlame(x, y) {
-  return sv("path", { class: "sym", stroke: "#f97316",
+  return sv("path", { class: "sym", style: "stroke:#f97316",
     d: `M${x},${y - 34} c 14,14 22,24 22,38 a 22,22 0 0 1 -44,0 c 0,-10 6,-16 10,-24 c 2,8 6,10 8,10 c 2,-8 0,-16 4,-24 Z` });
 }
 function svCompressor(x, y) {
@@ -3013,6 +3016,8 @@ function plantSlots(p) {
   add("starts", "indoor", 365, { f: "BurnerStarts", unit: "", d: 0, part: "starts" });
   add("hours", "indoor", 1346, { f: "BurnerHours", unit: "h", d: 0, part: "hours" });
   add("damped", "indoor", 2457, { f: "DampedActual", unit: "°C", part: "damped" });
+  add("solroof", "indoor", 273, { f: "Actual", unit: "°C", part: "solar" });
+  add("solbot", "indoor", 275, { f: "Actual", unit: "°C", part: "solar" });
   add("flow", "indoor", 268, { f: "Actual", unit: "°C", part: "water" });
   add("pump", "indoor", 381, { f: "Actual", unit: "%", d: 0, part: "pump" });
   add("press", "indoor", 318, { f: "Actual", unit: "bar", part: "press" });
@@ -3039,6 +3044,7 @@ function plantParts(p) {
     bmod: p.boiler && p.modulation, flue: p.boiler && p.flue,
     bfan: p.boiler && p.burnerFan, starts: p.boiler && p.burnerStarts,
     hours: p.boiler && p.burnerHours, damped: p.boiler && p.dampedOutside,
+    solar: p.boiler && p.solar,
     fan1: p.fans >= 1, fan2: p.fans >= 2, evap: p.evaporator, eev: p.eev > 0,
     fourway: p.fourWay, comp: !p.boiler, comprps: p.compressorRps, suction: p.suction,
     discharge: p.discharge, oil: p.oil, heatkw: p.heatPower, elw: p.elPower,
@@ -3060,8 +3066,14 @@ function buildBoilerSvg(p) {
   const V = (id, x, y, anchor = "middle") => { const t = svText(x, y, "–", "val", anchor); t.id = `pv-${id}`; return t; };
   const L = (x, y, text, anchor = "middle") => svText(x, y, text, "lbl", anchor);
 
-  svg.append(svPipe("M440,280 H940", "flow"));
-  svg.append(svPipe("M940,280 V130 H440", "ret"));
+  /* The diverter valve sends the one pump's water either through the
+     radiators or through the tank; each way is its own piece of pipe, so
+     only the one in use moves. */
+  const leg = (d, cls, which) => { const n = svPipe(d, cls); n.dataset.leg = which; return n; };
+  svg.append(svPipe("M440,280 H650", "flow"));
+  svg.append(leg("M650,280 H940", "flow", "hk"));
+  svg.append(leg("M940,280 V130 H775", "ret", "hk"));
+  svg.append(svPipe("M775,130 H440", "ret"));
   svg.append(svRadiator(940, 205));
 
   g("boutside", svSensor(90, 150, false), V("boutside", 90, 130), L(90, 176, "Außen"));
@@ -3084,11 +3096,17 @@ function buildBoilerSvg(p) {
   g("press", svSensor(560, 280, true), V("press", 560, 310), L(560, 324, "Druck"));
   g("divert", svValve(650, 280), V("divert", 650, 310), L(650, 324, "Umschaltventil"));
   g("dhw",
-    svPipe("M650,270 V225 H718", "flow"),
-    svPipe("M756,225 H775 V132", "ret"),
+    leg("M650,270 V225 H718", "flow", "dhw"),
+    leg("M756,225 H775 V132", "ret", "dhw"),
     svTank(720, 197, 34, 56), V("dhw", 737, 192), L(737, 268, "Warmwasser"));
-  g("circ", svPump(830, 225, 0), V("circ", 830, 200), L(830, 255, "Zirkulation"));
-  g("buffer", svTank(868, 177, 34, 56), V("buf", 885, 172), L(885, 248, "Puffer"));
+  /* Solar heat goes into the bottom of the same tank. */
+  g("solar",
+    sv("path", { class: "sym", style: "stroke:#facc15",
+                 d: "M800,200 L818,162 L868,162 L850,200 Z M817,200 L835,162 M834,200 L852,162 M800,200 V240 H756" }),
+    V("solroof", 834, 152), L(812, 216, "Kollektor", "start"),
+    V("solbot", 782, 258, "start"), L(782, 272, "Speicher unten", "start"));
+  g("circ", svPump(898, 225, 0), V("circ", 898, 200), L(898, 255, "Zirkulation"));
+  g("buffer", svTank(73, 290, 34, 56), V("buf", 90, 285), L(90, 362, "Puffer"));
   [1, 2, 3, 4].forEach((n, i) => {
     const x = 640 + i * 84;
     const c = p.circuits.find((k) => k.n === n);
@@ -3189,6 +3207,11 @@ function plantFlow() {
   };
   set(".pipe.hi, .pipe.lo", plantLiveNum.comp);
   set(".pipe.flow, .pipe.ret", plantLiveNum.pump);
+  /* Boiler: 0 heating, 1 in between, 2 hot water. Unknown: both move. */
+  const pos = plantLiveNum.divert;
+  if (pos === 0 || pos === 2) {
+    for (const n of svg.querySelectorAll(`[data-leg="${pos === 0 ? "dhw" : "hk"}"]`)) n.classList.remove("run");
+  }
 }
 
 function plantFormat(slot, v) {
@@ -3408,6 +3431,7 @@ function renderPlant() {
     if (!parts[n.dataset.part]) n.classList.add("off");
   }
   host.append(svg);
+  $("plant-pic-title").textContent = p.boiler ? "Kessel und Hydraulik" : "Kältekreis und Hydraulik";
   for (const [id, v] of Object.entries(plantLive)) {
     const t = $(`pv-${id}`);
     if (t) t.textContent = v;
@@ -3445,7 +3469,7 @@ async function plantLiveLoop() {
           const r = await api(`/api/read?ecu=${plantProfile.roles[s.role].addr}&did=${s.did}`);
           plantLive[s.id] = plantFormat(s, r.value);
           if (t) { t.textContent = plantLive[s.id]; t.classList.remove("stale"); }
-          if (s.id === "comp" || s.id === "pump") {
+          if (s.id === "comp" || s.id === "pump" || s.id === "divert") {
             plantLiveNum[s.id] = plantNumber(s, r.value);
             plantFlow();
           }
