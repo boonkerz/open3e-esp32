@@ -2843,10 +2843,12 @@ function derivePlant() {
        knows modulation, flue gas or flame statistics. */
     boiler,
     flue: has("indoor", 331),
-    /* The master's 373 is a target that stayed 0 on a running Vitodens
-       333-F; the burner control unit reports the speed (discussion #23). */
-    burnerFan: has("burner", 373) || has("indoor", 373),
-    burnerFanRole: has("burner", 373) ? "burner" : "indoor",
+    /* 374 is the measured speed, 373 the target. The burner control unit
+       has both; the master only knows 373, and that stayed 0 on a running
+       Vitodens 333-F (discussion #23). */
+    burnerFan: has("burner", 374) || has("burner", 373) || has("indoor", 373),
+    burnerFanRole: has("burner", 374) || has("burner", 373) ? "burner" : "indoor",
+    burnerFanDid: has("burner", 374) ? 374 : 373,
     burnerStarts: has("indoor", 365),
     burnerHours: has("indoor", 1346),
     dampedOutside: has("indoor", 2457),
@@ -3012,7 +3014,7 @@ function plantSlots(p) {
   else add("ret", "indoor", 269, { f: "Actual", unit: "°C", part: "water" });
   add("mod", "indoor", 526, { unit: "%", d: 0, part: "bmod" });
   add("flue", "indoor", 331, { f: "Actual", unit: "°C", part: "flue" });
-  add("bfan", p.burnerFanRole, 373, { unit: "rpm", d: 0, part: "bfan" });
+  add("bfan", p.burnerFanRole, p.burnerFanDid || 373, { unit: "rpm", d: 0, part: "bfan" });
   add("starts", "indoor", 365, { f: "BurnerStarts", unit: "", d: 0, part: "starts" });
   add("hours", "indoor", 1346, { f: "BurnerHours", unit: "h", d: 0, part: "hours" });
   add("damped", "indoor", 2457, { f: "DampedActual", unit: "°C", part: "damped" });

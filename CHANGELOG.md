@@ -30,7 +30,7 @@ bis dahin auf der Flash-Seite lag.
 - **Schema für Gas-Brennwertgeräte im Reiter „Anlage".** Ohne Außeneinheit,
   aber mit Brenner im Scan zeichnet der Reiter statt des Kältekreises einen
   Kessel mit Modulation (DID 526), Abgastemperatur (331), Gebläsedrehzahl
-  (373) und Brennerstarts (365), soweit das Gerät sie kennt. Die
+  (374, ersatzweise der Sollwert 373) und Brennerstarts (365), soweit das Gerät sie kennt. Die
   Wasserseite bleibt dieselbe; Durchfluss und Rücklauftemperatur kommen
   aus DID 1043, das Umschaltventil zeigt „Heizen", „Mitte" oder
   „Warmwasser". Punkte übernehmen und die Karte für Home Assistant
@@ -38,7 +38,8 @@ bis dahin auf der Flash-Seite lag.
   Vitodens 300-W B3HG und an einer Vitodens 333-F bestätigt (Diskussion
   #23). Die Gebläsedrehzahl kommt vom Brennersteuergerät (`BCU`), wenn es
   eines gibt: der Wert am Master blieb an der 333-F bei laufendem Brenner
-  auf 0. Das Bild für Home Assistant bleibt auch ohne Außeneinheit aktuell.
+  auf 0. Angezeigt wird die gemessene Drehzahl (DID 374), nicht mehr der
+  Sollwert (373). Das Bild für Home Assistant bleibt auch ohne Außeneinheit aktuell.
   Der Kessel hat ein eigenes Bild über die ganze Breite: Vorlauf und Druck
   sitzen am Kesselausgang vor dem Umschaltventil, Durchfluss, Rücklauf und
   Pumpe im Rücklauf, rechts ein Heizkörper; dazu Brennerstunden (DID 1346)
