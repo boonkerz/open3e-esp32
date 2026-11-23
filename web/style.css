@@ -136,6 +136,7 @@ section.active { display: block; }
 .plant .ac { stroke: #34d399; }
 .plant .bat { stroke: #a78bfa; }
 .plant .dim { opacity: .35; }
+.plant .pipe.rev { animation-direction: reverse; }
 .plant text.sm { font-size: 12px; }
 .plant .stale { opacity: .45; }
 /* Flow direction: dashes travelling along the pipe in the direction the path

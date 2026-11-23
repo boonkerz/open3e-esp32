@@ -3303,10 +3303,20 @@ function energySlots() {
     }
     return o;
   });
-  add(1810, (v) => { energyNum.ac = num(v, "ActivePower"); return { "en-ac": W(energyNum.ac) }; });
+  /* The house takes what the inverter delivers plus what the grid adds. At
+     the connection point a positive power is drawn from the grid: at the
+     plant this was read off, 0.8 kW from the inverter and 1.5 kW from the
+     grid met 2.3 kW of consumption. */
+  const house = () => (energyNum.ac === undefined || energyNum.grid === undefined
+    ? {} : { "en-house": W(energyNum.house = Math.max(0, energyNum.ac + energyNum.grid)) });
+  add(1810, (v) => { energyNum.ac = num(v, "ActivePower"); return { "en-ac": W(energyNum.ac), ...house() }; });
   add(1836, (v) => { energyNum.bat = num(v); return { "en-batp": W(energyNum.bat) }; });
   add(1664, (v) => { const x = num(v); return { "en-soc": x === undefined ? "–" : `${fmtDe(x, 0)} %` }; });
-  add(1603, (v) => ({ "en-grid": W(num(v, "ActivePower")) }));
+  add(1603, (v) => {
+    const x = energyNum.grid = num(v, "ActivePower");
+    return { "en-grid": W(x === undefined ? x : Math.abs(x)),
+             "en-gridl": x === undefined ? "Netz" : (x < 0 ? "Einspeisung" : "Netzbezug"), ...house() };
+  });
   add(1838, (v) => { const x = num(v); return { "en-batv": x === undefined ? "–" : `${fmtDe(x, 0)} V` }; });
   add(2240, (v) => { const x = num(v, "Actual"); return { "en-batt": x === undefined ? "–" : `${fmtDe(x, 1)} °C` }; });
   add(1826, (v) => { const x = num(v, "Power"); return { "en-nom": x === undefined ? "" : `max. ${fmtDe(x / 1000, 1)} kW` }; });
@@ -3364,14 +3374,21 @@ function buildEnergySvg(slots) {
     svText(432, 162, "=", "val"), svText(510, 196, "~", "val"),
     L(470, 115, "Wechselrichter"), V("en-nom", 470, 99, "lbl"));
   /* AC side and the grid connection point */
-  svg.append(pipe("M540,170 H770", "ac", "ac"), V("en-ac", 655, 158), L(655, 190, "Wechselrichter AC"),
+  svg.append(pipe("M540,170 H680", "ac", "ac"), V("en-ac", 610, 158), L(610, 190, "Wechselrichter AC"),
+    /* drawn from the grid towards the house; feeding in runs it backwards */
+    pipe("M834,80 H680 V170", "ac", "grid"),
+    pipe("M680,170 V225 H832", "ac", "house"),
     sv("g", { class: "sym" },
-      sv("circle", { cx: 800, cy: 170, r: 26, fill: "#0b1020" }),
-      sv("path", { d: "M800,152 V188 M788,160 H812 M784,170 H816 M800,152 L788,188 M800,152 L812,188" })),
-    V("en-grid", 800, 128), L(800, 214, "Netzanschluss"));
+      sv("circle", { cx: 860, cy: 80, r: 26, fill: "#0b1020" }),
+      sv("path", { d: "M860,62 V98 M848,70 H872 M844,80 H876 M860,62 L848,98 M860,62 L872,98" })),
+    V("en-grid", 860, 40), V("en-gridl", 860, 124, "lbl"),
+    sv("path", { class: "sym", fill: "#0b1020",
+                 d: "M832,225 L860,200 L888,225 M838,220 V250 H882 V220" }),
+    V("en-house", 930, 222, "val", "start"), L(930, 240, "Verbrauch", "start"), L(860, 268, "Haus"));
+  svg.querySelector("#pv-en-gridl").textContent = plantLive["en-gridl"] || "Netz";
   if (has(1802)) {
-    svg.append(V("en-today", 900, 320), L(900, 338, "Erzeugung heute"),
-               V("en-total", 900, 375), L(900, 393, "Erzeugung gesamt"));
+    svg.append(V("en-today", 880, 335), L(880, 353, "Erzeugung heute"),
+               V("en-total", 880, 385), L(880, 403, "Erzeugung gesamt"));
   }
   /* battery: the pack values on the riser, the modules in a row below */
   if (has(1836) || has(1838) || has(1577)) {
@@ -3395,14 +3412,17 @@ function buildEnergySvg(slots) {
 }
 
 /* What is known to flow moves, in the direction it flows: a string towards
-   the inverter, the inverter towards the house. Battery and grid stay still,
-   the sign convention of their power is not established. */
+   the inverter, the inverter and the grid towards the house, the grid line
+   backwards when feeding in. The battery stays still, the sign convention of
+   its power is not established. */
 function energyFlow() {
   const svg = $("energy-svg").querySelector("svg");
   if (!svg) return;
   for (const p of svg.querySelectorAll("[data-en]")) {
     const v = energyNum[p.dataset.en];
-    p.classList.toggle("run", p.dataset.en !== "bat" && typeof v === "number" && v > 0);
+    const k = p.dataset.en;
+    p.classList.toggle("run", k !== "bat" && typeof v === "number" && (k === "grid" ? v !== 0 : v > 0));
+    p.classList.toggle("rev", k === "grid" && v < 0);
   }
   for (const g of svg.querySelectorAll("[data-string]")) {
     const n = g.dataset.string;

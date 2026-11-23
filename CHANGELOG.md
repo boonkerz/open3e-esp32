@@ -21,9 +21,11 @@ bis dahin auf der Flash-Seite lag.
   gesamt (1802). Jedes Batteriemodul erscheint mit Spannung, Temperatur
   und der Spanne seiner Zellspannungen; diese Werte liest der Browser aus
   den Rohdaten der DIDs 1577–1582, deren Aufbau an einer einzelnen VX3
-  mit sechs Modulen abgelesen ist. Strings und Wechselrichter bewegen
-  sich, solange Leistung fließt; Batterie und Netz bleiben stehen, weil
-  das Vorzeichen ihrer Leistung nicht gesichert ist. Die Karte gibt es
+  mit sechs Modulen abgelesen ist. Das Haus steht als Verbraucher im
+  Bild, mit der Summe aus Wechselrichter und Netz; am Netz steht
+  „Netzbezug" oder „Einspeisung", und die Leitung läuft in die passende
+  Richtung. Die Batterieleitung bleibt stehen, weil das Vorzeichen ihrer
+  Leistung nicht gesichert ist. Die Karte gibt es
   nur im Browser, nicht als Bild für Home Assistant.
 
 - **MQTT-Kommandos für open3e-ha.** `system` veröffentlicht erkannte
