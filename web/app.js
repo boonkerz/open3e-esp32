@@ -782,7 +782,8 @@ function renderPoints() {
                 el("option", { value: "flat", textContent: "geflacht" }));
     mode.value = cfg?.mode ?? "json";
     const topic = el("input", { type: "text", value: cfg?.topic ?? "",
-                                placeholder: dp.name, disabled: !cfg });
+                                placeholder: dp.name, disabled: !cfg,
+                                className: "topic" });
     const ha = el("input", { type: "checkbox", checked: cfg?.ha ?? true, disabled: !cfg });
     /* Off by default, as in open3e: a retained value survives the publisher,
        and a broker full of stale values is harder to notice than a missing
@@ -3232,6 +3233,196 @@ function plantFormat(slot, v) {
   return `${fmtDe(x, d)}${slot.unit ? " " + slot.unit : ""}`;
 }
 
+/* ---- battery storage and photovoltaics (Vitocharge) ---- */
+
+/* The energy management unit of a Vitocharge VX3. It stands on its own: a
+   house may have one without a heat generator on the same bus. */
+function energyDevice() {
+  const devs = system.devices || [];
+  const has = (d, did) => d.dids.some((x) => x[0] === did);
+  return devs.find((d) => /^EMCU/.test(d.prop || "") && (has(d, 1690) || has(d, 1836)))
+      || null;
+}
+
+/* DID 1577..1582 ElectricalEnergyStorageModule*OperatingData, undecoded in
+   the database. Read off one VX3 with six modules: four 16-bit words, then a
+   count and up to 16 temperatures (16 bit, 0.1 degC, one pad byte), then a
+   count and up to 16 cell voltages (16 bit, mV, three pad bytes). The sum of
+   the cells matched the pack voltage of DID 1838 across all six modules.
+   Anything that does not look like that is treated as "no module". */
+function energyModule(hex) {
+  if (typeof hex !== "string" || hex.length < 2 * 64 || /[^0-9a-f]/i.test(hex)) return null;
+  const b = (i) => parseInt(hex.substr(2 * i, 2), 16);
+  const u16 = (i) => b(i) | (b(i + 1) << 8);
+  const nT = b(9), nC = b(58);
+  if (!(nT >= 1 && nT <= 16 && nC >= 1 && nC <= 16) || hex.length < 2 * (59 + 5 * nC)) return null;
+  const temps = [], cells = [];
+  for (let i = 0; i < nT; i++) temps.push(u16(10 + 3 * i) / 10);
+  for (let i = 0; i < nC; i++) cells.push(u16(59 + 5 * i));
+  if (cells.some((c) => c < 1500 || c > 4500) || temps.some((t) => t > 90)) return null;
+  return {
+    volts: cells.reduce((a, c) => a + c, 0) / 1000,
+    temp: temps.reduce((a, t) => a + t, 0) / temps.length,
+    cellMin: Math.min(...cells), cellMax: Math.max(...cells), cells: nC,
+  };
+}
+
+const energyNum = {};      /* what the picture animates and dims by */
+
+/* One entry per datapoint; `fill` turns the answer into the texts of the
+   picture, keyed by element id without the "pv-" prefix. */
+function energySlots() {
+  const dev = energyDevice();
+  if (!dev) return [];
+  const S = [];
+  const add = (did, fill) => {
+    if (dev.dids.some((x) => x[0] === did)) S.push({ id: `en${did}`, energy: true, addr: dev.addr, did, fill });
+  };
+  const num = (v, f) => {
+    const x = v && typeof v === "object" ? v[f] : v;
+    return typeof x === "number" ? x : undefined;
+  };
+  const W = (x) => (x === undefined ? "–" : `${fmtDe(x, 0)} W`);
+  const kWh = (wh) => (wh === undefined ? "–"
+    : `${(wh / 1000).toLocaleString("de-DE", { maximumFractionDigits: wh < 100000 ? 1 : 0 })} kWh`);
+  add(1690, (v) => {
+    energyNum.pv = num(v, "ActivePower cumulated");
+    return { "en-pv": W(energyNum.pv) };
+  });
+  add(1831, (v) => {
+    const o = {};
+    for (const n of [1, 2, 3]) { energyNum[`sp${n}`] = num(v, `String${n}`); o[`en-sp${n}`] = W(energyNum[`sp${n}`]); }
+    return o;
+  });
+  add(1833, (v) => {
+    const o = {};
+    for (const n of [1, 2, 3]) {
+      const x = num(v, `String${n}`);
+      energyNum[`sv${n}`] = x;
+      o[`en-sv${n}`] = x === undefined ? "–" : `${fmtDe(x, 0)} V`;
+    }
+    return o;
+  });
+  add(1810, (v) => { energyNum.ac = num(v, "ActivePower"); return { "en-ac": W(energyNum.ac) }; });
+  add(1836, (v) => { energyNum.bat = num(v); return { "en-batp": W(energyNum.bat) }; });
+  add(1664, (v) => { const x = num(v); return { "en-soc": x === undefined ? "–" : `${fmtDe(x, 0)} %` }; });
+  add(1603, (v) => ({ "en-grid": W(num(v, "ActivePower")) }));
+  add(1838, (v) => { const x = num(v); return { "en-batv": x === undefined ? "–" : `${fmtDe(x, 0)} V` }; });
+  add(2240, (v) => { const x = num(v, "Actual"); return { "en-batt": x === undefined ? "–" : `${fmtDe(x, 1)} °C` }; });
+  add(1826, (v) => { const x = num(v, "Power"); return { "en-nom": x === undefined ? "" : `max. ${fmtDe(x / 1000, 1)} kW` }; });
+  add(1802, (v) => ({ "en-today": kWh(num(v, "PhotovoltaicProductionToday")),
+                      "en-total": kWh(num(v, "PhotovoltaicProductionTotal")) }));
+  for (let n = 1; n <= 6; n++) {
+    add(1576 + n, (v) => {
+      const m = energyModule(v);
+      energyNum[`m${n}`] = !!m;
+      return { [`en-m${n}v`]: m ? `${fmtDe(m.volts, 1)} V` : "–",
+               [`en-m${n}t`]: m ? `${fmtDe(m.temp, 1)} °C` : "",
+               [`en-m${n}c`]: m ? `${fmtDe(m.cellMin / 1000, 2)}–${fmtDe(m.cellMax / 1000, 2)} V` : "" };
+    });
+  }
+  return S;
+}
+
+function buildEnergySvg(slots) {
+  const svg = sv("svg", { viewBox: "0 0 1000 440", role: "img",
+                          "aria-label": "Photovoltaik, Wechselrichter, Batterie und Netz" });
+  const has = (did) => slots.some((s) => s.did === did);
+  const V = (id, x, y, cls = "val", anchor = "middle") => {
+    const t = svText(x, y, plantLive[id] || "–", cls, anchor);
+    t.id = `pv-${id}`;
+    return t;
+  };
+  const L = (x, y, text, anchor = "middle") => svText(x, y, text, "lbl", anchor);
+  const pipe = (d, cls, key) => {
+    const n = svPipe(d, cls);
+    n.dataset.en = key;
+    return n;
+  };
+  /* photovoltaic strings, drawn towards the inverter */
+  if (has(1831) || has(1833)) {
+    const ys = [80, 170, 260];
+    ys.forEach((y, i) => {
+      const n = i + 1;
+      const g = sv("g", { "data-string": n },
+        pipe(y === 170 ? `M132,${y} H250` : `M132,${y} H250 V170`, "dc", `sp${n}`),
+        sv("g", { class: "sym" },
+          sv("path", { d: `M66,${y + 22} L78,${y - 22} H134 L122,${y + 22} Z`, fill: "#0b1020" }),
+          sv("path", { d: `M85,${y + 22} L97,${y - 22} M104,${y + 22} L116,${y - 22} M72,${y} H128` })),
+        L(100, y + 40, `String ${n}`),
+        V(`en-sp${n}`, 192, y - 10),
+        V(`en-sv${n}`, 192, y + 20, "lbl"));
+      svg.append(g);
+    });
+  }
+  svg.append(pipe("M250,170 H400", "dc", "pv"), V("en-pv", 325, 158), L(325, 190, "PV gesamt"));
+  /* inverter */
+  svg.append(
+    sv("g", { class: "sym" },
+      sv("rect", { x: 400, y: 125, width: 140, height: 90, rx: 6, fill: "#0b1020" }),
+      sv("line", { x1: 400, y1: 215, x2: 540, y2: 125 })),
+    svText(432, 162, "=", "val"), svText(510, 196, "~", "val"),
+    L(470, 115, "Wechselrichter"), V("en-nom", 470, 99, "lbl"));
+  /* AC side and the grid connection point */
+  svg.append(pipe("M540,170 H770", "ac", "ac"), V("en-ac", 655, 158), L(655, 190, "Wechselrichter AC"),
+    sv("g", { class: "sym" },
+      sv("circle", { cx: 800, cy: 170, r: 26, fill: "#0b1020" }),
+      sv("path", { d: "M800,152 V188 M788,160 H812 M784,170 H816 M800,152 L788,188 M800,152 L812,188" })),
+    V("en-grid", 800, 128), L(800, 214, "Netzanschluss"));
+  if (has(1802)) {
+    svg.append(V("en-today", 900, 320), L(900, 338, "Erzeugung heute"),
+               V("en-total", 900, 375), L(900, 393, "Erzeugung gesamt"));
+  }
+  /* battery: the pack values on the riser, the modules in a row below */
+  if (has(1836) || has(1838) || has(1577)) {
+    svg.append(pipe("M470,215 V300", "bat", "bat"),
+      V("en-soc", 456, 254, "val", "end"), L(456, 272, "Ladestand", "end"),
+      V("en-batp", 484, 254, "val", "start"), L(484, 272, "Batterie", "start"),
+      V("en-batv", 600, 254, "lbl"), V("en-batt", 660, 254, "lbl"));
+    for (let n = 1; n <= 6; n++) {
+      const x = 215 + (n - 1) * 86;
+      svg.append(sv("g", { "data-module": n },
+        sv("g", { class: "sym" },
+          sv("rect", { x, y: 300, width: 78, height: 84, rx: 5, fill: "#0b1020" }),
+          sv("path", { d: `M${x + 30},300 V294 H${x + 48} V300` })),
+        V(`en-m${n}v`, x + 39, 326),
+        V(`en-m${n}t`, x + 39, 346, "lbl"),
+        V(`en-m${n}c`, x + 39, 370, "lbl"),
+        L(x + 39, 402, `Modul ${n}`)));
+    }
+  }
+  return svg;
+}
+
+/* What is known to flow moves, in the direction it flows: a string towards
+   the inverter, the inverter towards the house. Battery and grid stay still,
+   the sign convention of their power is not established. */
+function energyFlow() {
+  const svg = $("energy-svg").querySelector("svg");
+  if (!svg) return;
+  for (const p of svg.querySelectorAll("[data-en]")) {
+    const v = energyNum[p.dataset.en];
+    p.classList.toggle("run", p.dataset.en !== "bat" && typeof v === "number" && v > 0);
+  }
+  for (const g of svg.querySelectorAll("[data-string]")) {
+    const n = g.dataset.string;
+    g.classList.toggle("dim", energyNum[`sv${n}`] === 0 && !(energyNum[`sp${n}`] > 0));
+  }
+  for (const g of svg.querySelectorAll("[data-module]")) {
+    g.classList.toggle("off", energyNum[`m${g.dataset.module}`] === false);
+  }
+}
+
+function renderEnergy() {
+  const slots = energySlots();
+  $("card-plant-energy").hidden = !slots.length;
+  const host = $("energy-svg");
+  host.innerHTML = "";
+  if (!slots.length) return;
+  host.append(buildEnergySvg(slots));
+  energyFlow();
+}
+
 /* ---- control points of the plant ---- */
 
 /* What is worth a control in Home Assistant, by part of the plant. A short
@@ -3354,6 +3545,7 @@ async function plantCtlAdd(btn) {
 
 function renderPlant() {
   plantProfile = derivePlant();
+  renderEnergy();
   renderPlantControls(plantProfile);
   const prof = $("plant-profile");
   prof.innerHTML = "";
@@ -3466,13 +3658,25 @@ async function plantLiveLoop() {
   const visible = () => $("tab-plant").classList.contains("active") && gen === plantGen;
   try {
     while (visible()) {
-      const slots = plantActiveSlots();
+      const slots = plantActiveSlots().concat(energySlots());
       if (!slots.length) break;
       for (const s of slots) {
         if (!visible()) break;
         const t0 = Date.now();
         const t = $(`pv-${s.id}`);
         try {
+          if (s.energy) {
+            const r = await api(`/api/read?ecu=${s.addr}&did=${s.did}`);
+            for (const [id, text] of Object.entries(s.fill(r.value))) {
+              plantLive[id] = text;
+              const n = $(`pv-${id}`);
+              if (n) n.textContent = text;
+            }
+            energyFlow();
+            const wait = 1000 - (Date.now() - t0);
+            if (wait > 0) await plantSleep(wait);
+            continue;
+          }
           const r = await api(`/api/read?ecu=${plantProfile.roles[s.role].addr}&did=${s.did}`);
           plantLive[s.id] = plantFormat(s, r.value);
           if (t) { t.textContent = plantLive[s.id]; t.classList.remove("stale"); }

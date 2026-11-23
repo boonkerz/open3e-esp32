@@ -13,6 +13,19 @@ bis dahin auf der Flash-Seite lag.
 
 ### Hinzugefügt
 
+- **Stromspeicher und Photovoltaik im Reiter „Anlage".** Hängt ein
+  Vitocharge am Bus, zeigt eine eigene Karte die drei Strings mit Leistung
+  und Spannung, die PV-Summe (DID 1690), den Wechselrichter mit seiner
+  AC-Leistung (1810), Ladestand, Leistung, Spannung und Temperatur der
+  Batterie, den Netzanschlusspunkt (1603) und die Erzeugung heute und
+  gesamt (1802). Jedes Batteriemodul erscheint mit Spannung, Temperatur
+  und der Spanne seiner Zellspannungen; diese Werte liest der Browser aus
+  den Rohdaten der DIDs 1577–1582, deren Aufbau an einer einzelnen VX3
+  mit sechs Modulen abgelesen ist. Strings und Wechselrichter bewegen
+  sich, solange Leistung fließt; Batterie und Netz bleiben stehen, weil
+  das Vorzeichen ihrer Leistung nicht gesichert ist. Die Karte gibt es
+  nur im Browser, nicht als Bild für Home Assistant.
+
 - **MQTT-Kommandos für open3e-ha.** `system` veröffentlicht erkannte
   Geräte und beim DID-Scan gefundene bekannte Datenpunkte mit ihren Topics
   auf `<Basis>/system`. Neu sind außerdem `read-json`, `read-raw`,
@@ -52,6 +65,12 @@ bis dahin auf der Flash-Seite lag.
   Bild in Home Assistant die Karte einmal neu erzeugen.
 
 ### Behoben
+
+- **Topic-Suffix in „Datenpunkte" wieder benutzbar.** Seit die Spalten
+  „Beschriftungen" und „Grenzen" dazukamen, blieb für das Feld nur noch
+  ein Streifen von 38 Pixeln, in dem man nicht sah, was man schrieb. Es
+  ist jetzt mindestens 200 Pixel breit, und der Reiter nutzt auf großen
+  Bildschirmen bis zu 1560 statt 1200 Pixel.
 
 - **Gas-Brennwertgerät als Wärmepumpe erkannt.** Backend-Gateway und
   Raumregelung beantworten an manchen Anlagen jeden Datenpunkt der

@@ -111,6 +111,10 @@ nav button.active { background: var(--accent); color: #fff; }
 .savebar .btn { flex: 0 0 auto; }
 
 main { padding: 20px; max-width: 1200px; margin: 0 auto; }
+/* The datapoint table has eleven columns; at 1200px the free-text ones were
+   squeezed until the topic field was too narrow to see what was typed. */
+main:has(#tab-points.active) { max-width: 1560px; }
+#pt-table input.topic { min-width: 200px; }
 section { display: none; }
 section.active { display: block; }
 
@@ -128,6 +132,11 @@ section.active { display: block; }
 .plant .flow { stroke: #ef4444; }
 .plant .ret { stroke: #60a5fa; }
 .plant .off { display: none; }
+.plant .dc { stroke: #facc15; }
+.plant .ac { stroke: #34d399; }
+.plant .bat { stroke: #a78bfa; }
+.plant .dim { opacity: .35; }
+.plant text.sm { font-size: 12px; }
 .plant .stale { opacity: .45; }
 /* Flow direction: dashes travelling along the pipe in the direction the path
    was drawn, which is the direction of flow in heating mode. Only while the
