@@ -11,6 +11,15 @@ bis dahin auf der Flash-Seite lag.
 
 ## Unveröffentlicht
 
+### Geändert
+
+- **Dokumentation als eigene Seite.** Die Anleitung steht jetzt, in Kapitel
+  geteilt und mit Suche, unter <https://esp32can.thomas-peterson.de/doku/>;
+  die Kapitel liegen als Markdown unter `docs/`. Die README ist auf eine
+  Übersicht mit Verweisen geschrumpft, Links auf ihre alten Abschnitte
+  führen deshalb nur noch auf diese Übersicht. Die Flash-Seite verlinkt
+  die Dokumentation.
+
 ## 0.5.0 — 2026-11-23
 
 Der Reiter „Anlage" kennt jetzt drei Arten von Anlagen: neben der
@@ -55,7 +64,7 @@ an einem Kessel und die Anzeige bei Einspeisung.
   `read` und `read-json` liefern beide JSON; `read-all` und `read-all-json`
   lesen beide die im Scan gefundenen DIDs der gewählten ECU. Ohne Scan-Ergebnis
   für diese ECU wird ein Fehler gemeldet. Einzelheiten und Einrichtung stehen
-  unter [MQTT](README.md#mqtt).
+  unter [MQTT](https://esp32can.thomas-peterson.de/doku/mqtt/).
 
 - **Schema für Gas-Brennwertgeräte im Reiter „Anlage".** Ohne Außeneinheit,
   aber mit Brenner im Scan zeichnet der Reiter statt des Kältekreises einen

@@ -14,6 +14,7 @@ in den Flash der Heizungssteuerung.
     manifest-dev.json
     bin/release/*.bin         die fünf Abschnitte des jeweiligen Standes
     bin/dev/*.bin
+    doku/                     die Dokumentation: docs/ mit MkDocs gerendert (mkdocs.yml)
 
 ## Offsets
 
@@ -70,6 +71,22 @@ nur, wenn sich die geändert hat.
 Beim Einspielen wird erst `bin/<kanal>/` per Umbenennen getauscht und dann das
 Manifest ersetzt — ein Browser sieht nie ein Manifest, dessen Binärdateien
 noch fehlen. Die Dateien des anderen Kanals bleiben unberührt.
+
+Die Dokumentation unter `doku/` gibt es nur einmal, für beide Kanäle: sie
+wird als ganzer Baum getauscht, der zuletzt geholte Lauf gewinnt. Ein
+Artefakt ohne `doku/` lässt die vorhandene stehen.
+
+## Dokumentation
+
+`docs/*.md` sind die Kapitel, `mkdocs.yml` legt Navigation und Aussehen
+fest, `docs/changelog.md` bindet `CHANGELOG.md` ein. Lokal ansehen:
+
+    make docs-setup    # einmalig: mkdocs-material in .venv/
+    make docs-serve    # http://127.0.0.1:8000, lädt bei Änderungen neu
+
+`make site` rendert sie nach `build/site/doku/`, wenn der Generator
+installiert ist; GitHub Actions verlangt ihn (`--docs`) und bricht bei
+toten Links ab.
 
 ## Voraussetzungen auf dem Server
 

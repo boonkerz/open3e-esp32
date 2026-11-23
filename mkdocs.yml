@@ -1,0 +1,90 @@
+# Die Dokumentation unter https://esp32can.thomas-peterson.de/doku/.
+# Gebaut von tools/build_site.py, zusammen mit der Flash-Seite.
+site_name: open3e-Gateway
+site_description: Viessmann-E3-Geräte über CAN nach MQTT, auf einem Waveshare ESP32-S3-RS485-CAN
+site_url: https://esp32can.thomas-peterson.de/doku/
+repo_url: https://github.com/boonkerz/open3e-esp32
+repo_name: boonkerz/open3e-esp32
+edit_uri: edit/main/docs/
+docs_dir: docs
+copyright: Apache License 2.0
+
+# Entwürfe für andere Orte, keine Seiten dieser Dokumentation.
+exclude_docs: |
+  wiki-antwort.md
+  open3e-wiki.md
+
+theme:
+  name: material
+  language: de
+  # Schriften kommen vom Betriebssystem, nicht von Google.
+  font: false
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle: { icon: material/weather-night, name: Dunkel }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle: { icon: material/weather-sunny, name: Hell }
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - pymdownx.superfences
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true
+  - toc:
+      permalink: true
+      # Umlaute im Anker behalten, wie GitHub es tut.
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds: { case: lower }
+
+validation:
+  links:
+    anchors: warn
+    not_found: warn
+
+nav:
+  - Start: index.md
+  - Flash-Seite: https://esp32can.thomas-peterson.de/
+  - Einstieg:
+      - Hardware: hardware.md
+      - Aufbau in der Praxis: aufbau-praxis.md
+      - Aus dem Browser flashen: flashen.md
+      - Erste Einrichtung: einrichtung.md
+      - Bus-Scan: bus-scan.md
+  - Betrieb:
+      - Anlage: anlage.md
+      - MQTT: mqtt.md
+      - Schreiben auf den Bus: schreiben.md
+      - Sichern und wiederherstellen: sichern.md
+      - Firmware-Update: update.md
+      - Zurücksetzen: zuruecksetzen.md
+  - Anbindungen:
+      - WireGuard: wireguard.md
+      - Aus dem Netz laden (VX3): netzladen.md
+      - Energiezähler E380: e380.md
+      - Kontakte und Schaltausgänge: kontakte.md
+      - KNX: knx.md
+      - evcc: evcc.md
+      - Rohdaten für Integrationen: rohdaten.md
+      - Raw-Gateway-API: raw-gateway-api.md
+  - Entwicklung:
+      - Bauen und flashen: bauen.md
+      - Aufbau der Firmware: intern.md
+      - Tests: tests.md
+      - Was nicht drin ist: grenzen.md
+  - Änderungen: changelog.md

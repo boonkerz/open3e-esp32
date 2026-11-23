@@ -2,7 +2,7 @@
 
 PY := .venv/bin/python
 
-.PHONY: install-pull help setup db fixtures test sanitize storage lint fwinfo package site deploy clean
+.PHONY: install-pull help setup db fixtures test sanitize storage lint fwinfo package site docs docs-setup docs-serve deploy clean
 
 help:
 	@echo "make setup     create the Python venv and fetch open3e"
@@ -70,6 +70,18 @@ package:
 
 site:
 	$(PY) tools/build_site.py --channel $(CHANNEL)
+
+# The documentation under /doku/ of the same site: docs/ rendered with MkDocs.
+# Pinned, so a new release of the generator cannot change the page between
+# two builds of the same commit.
+docs-setup:
+	$(PY) -m pip install -q mkdocs-material==9.6.23
+
+docs:
+	$(PY) -m mkdocs build --strict -f mkdocs.yml -d build/site/doku
+
+docs-serve:
+	$(PY) -m mkdocs serve -f mkdocs.yml
 
 # tar over ssh rather than rsync: the target does not have rsync, and for a
 # tree that is one 4 MB file which changes on every build anyway, delta

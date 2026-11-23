@@ -10,6 +10,7 @@ import argparse
 import json
 import shutil
 import struct
+import subprocess
 import sys
 from pathlib import Path
 
@@ -59,12 +60,43 @@ def manifest(channel: str, ver: str, args: dict) -> dict:
     }
 
 
+def build_docs(out: Path, required: bool) -> bool:
+    """Render docs/ with MkDocs into the site, beside the flash page.
+
+    The generator is not needed to build firmware, so a checkout without it
+    still gets a flash page -- but silently, a missing generator would publish
+    a site whose documentation link leads nowhere. CI therefore passes --docs.
+    """
+    try:
+        import mkdocs  # noqa: F401
+        import material  # noqa: F401
+    except ImportError:
+        msg = "mkdocs-material missing -- run `make docs-setup`"
+        if required:
+            print(msg, file=sys.stderr)
+            return False
+        print(f"  (documentation skipped: {msg})")
+        return True
+    if out.exists():
+        shutil.rmtree(out)
+    r = subprocess.run([sys.executable, "-m", "mkdocs", "build", "--strict", "-q",
+                        "-f", str(ROOT / "mkdocs.yml"), "-d", str(out)], cwd=ROOT)
+    if r.returncode != 0:
+        print("documentation build failed", file=sys.stderr)
+        return False
+    pages = sum(1 for _ in out.rglob("index.html"))
+    print(f"  {'':>10}  {'doku/':<24} {pages:8d} pages")
+    return True
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--channel", default="dev", choices=("release", "dev"))
     ap.add_argument("--version", default=None)
     ap.add_argument("--build", type=Path, default=BUILD)
     ap.add_argument("--out", type=Path, default=BUILD / "site")
+    ap.add_argument("--docs", action="store_true",
+                    help="fail instead of skipping when the documentation cannot be built")
     a = ap.parse_args()
 
     args_file = a.build / "flasher_args.json"
@@ -108,6 +140,9 @@ def main() -> int:
         {"version": make_update.app_version(fw), "size": len(pkg),
          "channel": a.channel}) + "\n")
     print(f"  {'':>10}  {'open3e-update.bin':<24} {len(pkg) / 1024:8.0f} KiB")
+
+    if not build_docs(a.out / "doku", a.docs):
+        return 1
 
     out_manifest = a.out / f"manifest-{a.channel}.json"
     out_manifest.write_text(json.dumps(manifest(a.channel, ver, args), indent=2) + "\n")

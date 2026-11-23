@@ -2,15 +2,13 @@
 
 Ein Erfahrungsbericht von **wunderbaum** aus der
 [open3e-Diskussion #386](https://github.com/open3e/open3e/discussions/386),
-hier gesammelt, weil er das beschreibt, was in der README nur als Regel
+hier gesammelt, weil er das beschreibt, was unter [Hardware](hardware.md) nur als Regel
 steht: wie man das Ding tatsächlich an die Heizung bekommt. Die Anlage ist
 eine Vitodens 343-F B3UG-19, eine Brennwerttherme für Fußbodenheizung mit
 Solarthermie fürs Brauchwasser. Die Fotos stammen von ihm.
 
-Was hier steht, ergänzt die beiden anderen Artikel und wiederholt sie nicht:
-die technische Einordnung in [open3e-wiki.md](open3e-wiki.md), die
-Verkabelungsregeln (Masse, Abschluss, Spannung) in der
-[README](../README.md#hardware).
+Die Verkabelungsregeln (Masse, Abschluss, Spannung) stehen unter
+[Hardware](hardware.md) und werden hier nicht wiederholt.
 
 ## Was gebraucht wird
 
@@ -98,8 +96,8 @@ Vergleich darauf.
 
 Hängt sonst nichts weiter am CAN-Bus der Heizung, muss der kleine Schalter auf
 dem Board auf **ON** stehen, das Gerät sitzt dann am Busende. Hängen schon
-andere Teilnehmer daran, bitte den Abschnitt zum Abschluss in der README
-lesen: zwei Abschlüsse zu viel legen den Bus lahm.
+andere Teilnehmer daran, bitte den Abschnitt zum Abschluss unter
+[Hardware](hardware.md) lesen: zwei Abschlüsse zu viel legen den Bus lahm.
 
 ## Inbetriebnahme
 
@@ -131,4 +129,5 @@ mit dem MQTT Explorer:
 
 Dank Auto-Discovery tauchen sie dann auch in Home Assistant auf. Schreiben
 ist in der Firmware voreingestellt gesperrt; wer Datenpunkte setzen will,
-gibt es in den Einstellungen frei, siehe README.
+gibt es in den Einstellungen frei, siehe
+[Schreiben auf den Bus](schreiben.md).

@@ -16,8 +16,8 @@ die Statusseite zeigt beide Nummern in der Karte „Gerät".
 Referenz für die Rohdaten-Schnittstellen, die dieser Branch für externe
 Integrationen ergänzt (REST `rawread`/`rawwrite`, MQTT-Raw-Relay, Status-
 Erkennung, Scan-Delegation) sowie für die Gegenseite in ioBroker.e3oncan,
-das als erste Software diesen Weg nutzt. Siehe auch die kurze Übersicht im
-README unter „Rohdaten für externe Integrationen".
+das als erste Software diesen Weg nutzt. Siehe auch die kurze Übersicht unter
+[Rohdaten für externe Integrationen](rohdaten.md).
 
 **Umsetzungsstand:** Abschnitt 1 (REST rawread/rawwrite, ohne Service 0x77)
 und der `rawApiVersion`/`rawWriteEnabled`-Teil von Abschnitt 3 sind
@@ -85,14 +85,14 @@ unberührt — sondern eine ECU, die nicht oder zu spät geantwortet hat. Seit
 0.3.0 wiederholt die Firmware ein Anfrage-Frame, das von einem Busfehler
 zerstört wurde oder die Arbitrierung verloren hat, bis zu dreimal; vorher
 ging es in dem Fall stillschweigend verloren und erschien eine Sekunde später
-als „no response" (Erklärung in `README.md`, Abschnitt Bus-Diagnose).
+als „no response" (Erklärung unter [Bus-Diagnose](hardware.md#bus-diagnose)).
 
 Ein `"error": "paused: another device is programming a control unit"` heißt:
 die Anfrage wurde **nicht gesendet**. Das Gerät hat auf dem Bus einen
 Sitzungswechsel, Reset, eine Routine oder einen Download eines anderen
 Teilnehmers gesehen (Inbetriebnahme, Software-Update) und schweigt, bis der
-Bus zehn Minuten frei davon war (`README.md`, Abschnitt „Fremde Diagnose auf
-dem Bus"; Zustand unter `guard` in `/api/status`). Ein Client sollte das
+Bus zehn Minuten frei davon war ([Fremde Diagnose auf dem
+Bus](hardware.md#fremde-diagnose-auf-dem-bus); Zustand unter `guard` in `/api/status`). Ein Client sollte das
 nicht als Fehler der ECU werten und nicht in schneller Folge wiederholen.
 Gilt ebenso für `rawwrite`. Neuer Fehlertext, unveränderte Antwortform,
 deshalb bleibt `rawApiVersion` bei `1`.

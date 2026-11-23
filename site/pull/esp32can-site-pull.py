@@ -149,6 +149,21 @@ def install(zip_bytes: bytes, channel: str) -> None:
         if old.exists():
             shutil.rmtree(old)
 
+        # The documentation is one tree for both channels, newest wins. It is
+        # swapped whole, like the binaries: pages removed from the docs must
+        # not linger, and a reader must not get a page without its stylesheet.
+        docs = staging / "doku"
+        if docs.is_dir():
+            target = WEBROOT / "doku"
+            old = WEBROOT / ".doku.old"
+            if old.exists():
+                shutil.rmtree(old)
+            if target.exists():
+                target.rename(old)
+            shutil.move(str(docs), str(target))
+            if old.exists():
+                shutil.rmtree(old)
+
         for name in (f"manifest-{channel}.json", "index.html", "LICENSE", "NOTICE"):
             src = staging / name
             if src.exists():

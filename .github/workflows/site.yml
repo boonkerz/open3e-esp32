@@ -76,7 +76,10 @@ jobs:
           CHANNEL=dev
           case "$GITHUB_REF" in refs/tags/*) CHANNEL=release ;; esac
           echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
-          python3 tools/build_site.py --channel "$CHANNEL"
+          # The documentation generator goes into the venv `make setup`
+          # created; --docs makes a missing or failing one stop the publish.
+          make docs-setup
+          .venv/bin/python tools/build_site.py --channel "$CHANNEL" --docs
         id: assemble
 
       - uses: actions/upload-artifact@v4
