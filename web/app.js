@@ -3678,7 +3678,12 @@ async function plantLiveLoop() {
   const visible = () => $("tab-plant").classList.contains("active") && gen === plantGen;
   try {
     while (visible()) {
-      const slots = plantActiveSlots().concat(energySlots());
+      /* What the animation hangs on comes first: with one read a second, a
+         valve at the end of the list stayed a dash for twenty seconds. */
+      const lead = ["comp", "pump", "divert"];
+      const all = plantActiveSlots();
+      const slots = all.filter((s) => lead.includes(s.id))
+        .concat(all.filter((s) => !lead.includes(s.id)), energySlots());
       if (!slots.length) break;
       for (const s of slots) {
         if (!visible()) break;

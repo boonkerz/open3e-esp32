@@ -490,7 +490,7 @@ int main(int argc, char **argv)
     ok("a circuit without a name is numbered",
        m && strstr(m->payload, "\"Heizkennlinie Heizkreis 2\"") != NULL, m ? m->payload : "");
     reset("[]", "open3e-vent/cmnd", "flat");
-    ha_disco_curve_image(2, NULL, NULL);
+    ok("retracting reports that it went out", ha_disco_curve_image(2, NULL, NULL), NULL);
     m = find("homeassistant/image/open3e_112233/curve_2/config");
     ok("a deselected curve retracts its entity", m && m->payload[0] == '\0', NULL);
     m = find("open3e-vent/curve/2");
@@ -498,8 +498,8 @@ int main(int argc, char **argv)
     m = find("open3e-vent/curve/2/b64");
     ok("in both forms", m && m->payload[0] == '\0', NULL);
     reset("[]", "open3e-vent/cmnd", "flat");
-    ha_disco_curve_image(9, NULL, "<svg/>");
-    ok("there is no ninth circuit", find("open3e-vent/curve/9") == NULL, NULL);
+    ok("there is no ninth circuit", !ha_disco_curve_image(9, NULL, "<svg/>")
+       && find("open3e-vent/curve/9") == NULL, NULL);
 
     /* --- the contact inputs --- */
     snprintf(points, sizeof(points), POINTS_533, "flat");

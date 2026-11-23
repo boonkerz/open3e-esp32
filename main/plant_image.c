@@ -8,6 +8,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "nvs.h"
 
 #include "app_config.h"
 #include "ha_disco.h"
@@ -260,7 +261,47 @@ static bool render_live(bool *comp_running, bool *pump_running, int *valve)
 
 static uint32_t s_curve_hash[CURVE_CIRCUITS];
 static uint8_t  s_curve_age[CURVE_CIRCUITS];
-static bool     s_curve_swept;
+
+/* Which circuits have a picture at the broker, one bit each, kept across
+ * restarts. Taking a deselected curve back means publishing empty retained
+ * messages, and doing that for all eight after every start made topics
+ * appear at whoever watches the broker -- ioBroker's MQTT adapter keeps an
+ * object for each -- on installations that never had a curve (discussion
+ * #23). Now only what was published is taken back. */
+#define CURVE_NVS_NS   "plant"
+#define CURVE_NVS_KEY  "curve_pub"
+static uint8_t s_curve_pub;
+static bool    s_curve_pub_loaded;
+
+static void curve_pub_load(void)
+{
+    if (s_curve_pub_loaded) {
+        return;
+    }
+    s_curve_pub_loaded = true;
+    /* No record yet: a firmware before this one may have left pictures
+     * behind, so the first run still takes back all eight, once. */
+    s_curve_pub = 0xFF;
+    nvs_handle_t h;
+    if (nvs_open(CURVE_NVS_NS, NVS_READONLY, &h) == ESP_OK) {
+        nvs_get_u8(h, CURVE_NVS_KEY, &s_curve_pub);
+        nvs_close(h);
+    }
+}
+
+static void curve_pub_store(uint8_t mask)
+{
+    if (mask == s_curve_pub) {
+        return;
+    }
+    s_curve_pub = mask;
+    nvs_handle_t h;
+    if (nvs_open(CURVE_NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u8(h, CURVE_NVS_KEY, mask);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+}
 
 static uint32_t fnv1a(const char *s)
 {
@@ -341,10 +382,11 @@ static void curve_render(int n, uint16_t ecu)
     char *svg = heat_curve_svg(&c);
     if (svg) {
         uint32_t h = fnv1a(svg);
-        if (h != s_curve_hash[n] || ++s_curve_age[n] >= CURVE_REFRESH) {
-            ha_disco_curve_image(n + 1, c.name, svg);
+        if ((h != s_curve_hash[n] || ++s_curve_age[n] >= CURVE_REFRESH)
+            && ha_disco_curve_image(n + 1, c.name, svg)) {
             s_curve_hash[n] = h;
             s_curve_age[n] = 0;
+            curve_pub_store(s_curve_pub | (uint8_t)(1u << n));
         }
         free(svg);
     }
@@ -355,17 +397,19 @@ static void curve_tick(void)
 {
     uint16_t ecu_of[CURVE_CIRCUITS];
     curve_selection(ecu_of);
+    curve_pub_load();
+    uint8_t cleared = 0;
     for (int n = 0; n < CURVE_CIRCUITS; n++) {
         if (ecu_of[n]) {
             curve_render(n, ecu_of[n]);
-        } else if (s_curve_hash[n] || !s_curve_swept) {
-            /* Deselected -- or deselected while the device was off, which
-             * only a sweep after start can know about. */
-            ha_disco_curve_image(n + 1, NULL, NULL);
+        } else if ((s_curve_pub & (1u << n)) && ha_disco_curve_image(n + 1, NULL, NULL)) {
+            /* Deselected, now or while the device was off. */
             s_curve_hash[n] = 0;
+            cleared |= (uint8_t)(1u << n);
         }
     }
-    s_curve_swept = true;
+    /* One write for the lot: the first run after an update clears eight. */
+    curve_pub_store(s_curve_pub & (uint8_t)~cleared);
 }
 
 static void plant_task(void *arg)

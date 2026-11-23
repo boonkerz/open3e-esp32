@@ -11,6 +11,18 @@ bis dahin auf der Flash-Seite lag.
 
 ## Unveröffentlicht
 
+### Behoben
+
+- **Leere Nachrichten für Heizkennlinien nach jedem Start.** Um Bilder
+  abgewählter Kennlinien beim Broker zu löschen, schickte das Gateway nach
+  jedem Neustart leere Nachrichten für alle acht Heizkreise, auf
+  `<Basis>/curve/…` und unter `homeassistant/image/…`. Ein Broker löscht
+  damit nur; ioBroker und MQTT Explorer legen für jede aber einen Eintrag
+  an, auch an Anlagen, die nie eine Kennlinie veröffentlicht hatten
+  (Diskussion #23). Das Gateway merkt sich jetzt, welche Kennlinien es
+  veröffentlicht hat, und nimmt nur diese zurück. Nach dem Update räumt es
+  ein letztes Mal alle acht auf.
+
 ### Geändert
 
 - **Dokumentation als eigene Seite.** Die Anleitung steht jetzt, in Kapitel
@@ -19,6 +31,10 @@ bis dahin auf der Flash-Seite lag.
   Übersicht mit Verweisen geschrumpft, Links auf ihre alten Abschnitte
   führen deshalb nur noch auf diese Übersicht. Die Flash-Seite verlinkt
   die Dokumentation.
+- **Reiter „Anlage": Verdichter, Pumpe und Umschaltventil zuerst.** Der
+  Reiter liest einen Datenpunkt je Sekunde; das Umschaltventil stand am
+  Ende der Liste und zeigte nach dem Öffnen gut 20 Sekunden lang nur
+  einen Strich.
 
 ## 0.5.0 — 2026-11-23
 

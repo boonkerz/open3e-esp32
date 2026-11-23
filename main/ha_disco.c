@@ -923,12 +923,12 @@ static void pub_base64(const char *topic, const char *text)
     free(b64);
 }
 
-void ha_disco_curve_image(int circuit, const char *name, const char *svg)
+bool ha_disco_curve_image(int circuit, const char *name, const char *svg)
 {
     mqtt_cfg_t cfg;
     mqtt_cfg_get(&cfg);
     if (!cfg.enabled || !mqtt_pub_connected() || circuit < 1 || circuit > 8) {
-        return;
+        return false;
     }
     char dev_id[32];
     device_id(dev_id, sizeof(dev_id));
@@ -942,7 +942,7 @@ void ha_disco_curve_image(int circuit, const char *name, const char *svg)
         mqtt_pub_raw(topic, "", true);
         mqtt_pub_raw(t64, "", true);
         plant_image_config(&cfg, dev_id, object, "", topic, true);
-        return;
+        return true;
     }
     mqtt_pub_raw(topic, svg, true);
     pub_base64(t64, svg);
@@ -953,6 +953,7 @@ void ha_disco_curve_image(int circuit, const char *name, const char *svg)
         snprintf(label, sizeof(label), "Heizkennlinie Heizkreis %d", circuit);
     }
     plant_image_config(&cfg, dev_id, object, label, topic, false);
+    return true;
 }
 
 void ha_disco_plant_live(const char *svg)
