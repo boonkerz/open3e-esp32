@@ -11,6 +11,21 @@ bis dahin auf der Flash-Seite lag.
 
 ## Unveröffentlicht
 
+## 0.5.0 — 2026-11-23
+
+Der Reiter „Anlage" kennt jetzt drei Arten von Anlagen: neben der
+Wärmepumpe das Gas-Brennwertgerät mit eigenem Bild und den Stromspeicher
+mit Photovoltaik. Dazu kommen die MQTT-Kommandos, die open3e-ha erwartet.
+Das Update läuft wie seit 0.4.0 über *Einstellungen → Wartung → Update*;
+wer die Karte für Home Assistant an einem Kessel nutzt, erzeugt sie danach
+einmal neu.
+
+Das Kesselbild ist an einer Vitodens 300-W, einer 333-F und einer 343-F
+mit Solarthermie bestätigt (Diskussion #23), die Karte für den
+Stromspeicher an einer einzelnen Vitocharge VX3. Nicht an Hardware geprüft
+sind die Ist-Drehzahl des Gebläses (DID 374), das Bild für Home Assistant
+an einem Kessel und die Anzeige bei Einspeisung.
+
 ### Hinzugefügt
 
 - **Stromspeicher und Photovoltaik im Reiter „Anlage".** Hängt ein
@@ -25,8 +40,8 @@ bis dahin auf der Flash-Seite lag.
   Bild, mit der Summe aus Wechselrichter und Netz; am Netz steht
   „Netzbezug" oder „Einspeisung", und die Leitung läuft in die passende
   Richtung. Die Batterieleitung bleibt stehen, weil das Vorzeichen ihrer
-  Leistung nicht gesichert ist. Die Karte gibt es
-  nur im Browser, nicht als Bild für Home Assistant.
+  Leistung nicht gesichert ist. Die Karte gibt es nur im Browser, nicht
+  als Bild für Home Assistant.
 
 - **MQTT-Kommandos für open3e-ha.** `system` veröffentlicht erkannte
   Geräte und beim DID-Scan gefundene bekannte Datenpunkte mit ihren Topics

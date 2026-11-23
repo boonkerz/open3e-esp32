@@ -480,6 +480,15 @@ die gedämpfte Außentemperatur; die Sensoren der Wasserseite stehen dort, wo
 sie im Gerät sitzen. Gebaut nach den Daten einer Vitodens 300-W, an einer Vitodens
 333-F bestätigt.
 
+Hängt ein **Vitocharge** am Bus, kommt eine zweite Karte *Stromspeicher und
+Photovoltaik* dazu: die Strings mit Leistung und Spannung, die PV-Summe, der
+Wechselrichter, die Batterie mit Ladestand und ihren einzelnen Modulen
+(Spannung, Temperatur, Spanne der Zellspannungen), der Netzanschlusspunkt
+mit „Netzbezug" oder „Einspeisung" und das Haus mit seinem Verbrauch. Die
+Modulwerte liest der Browser aus Rohdaten (DID 1577–1582), deren Aufbau an
+einer einzelnen VX3 abgelesen ist. Diese Karte gibt es nur im Browser, nicht
+als Bild für Home Assistant.
+
 **Was der Bus über die Anlage verrät.** Den Modellnamen nicht: DID 377 und
 2829 enthalten nur die Seriennummer, 963 (Ersatzteilnummer) wird abgelehnt.
 Lesbar sind die Nennwärmeleistung (2342), Verdichtertyp (2570) und
