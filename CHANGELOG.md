@@ -22,6 +22,11 @@ bis dahin auf der Flash-Seite lag.
   (Diskussion #23). Das Gateway merkt sich jetzt, welche Kennlinien es
   veröffentlicht hat, und nimmt nur diese zurück. Nach dem Update räumt es
   ein letztes Mal alle acht auf.
+- **Anlagenprofil: „Aktoren (DID 1238)" war missverständlich.** Die Liste
+  nennt auch Sensoren; an einer Vitodens stand dort nur
+  „OutsideTemperatureSensor", was sich las, als käme die Außentemperatur
+  aus DID 1238. Die Zeile heißt jetzt „Aktoren und Sensoren (laut DID
+  1238)", der Fühler „Außentemperaturfühler" (Diskussion #23).
 
 ### Geändert
 

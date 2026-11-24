@@ -3626,9 +3626,13 @@ function renderPlant() {
     401: "Pumpe Heizkreis 1", 402: "Pumpe Heizkreis 2", 403: "Pumpe Heizkreis 3", 404: "Pumpe Heizkreis 4",
     475: "Mischer Heizkreis 1", 476: "Mischer Heizkreis 2", 477: "Mischer Heizkreis 3", 478: "Mischer Heizkreis 4",
     354: "Verdampfer-Bodenheizung", 2852: "Luftkanalheizung",
+    274: "Außentemperaturfühler",
   };
   if (p.actors.length) {
-    kv("Aktoren (DID 1238)", p.actors.map((d) => ACTOR_DE[d] || didNames[d] || `DID ${d}`).join(", "));
+    /* The list names sensors too: a Vitodens 333-F lists its outdoor sensor,
+       and under "Aktoren (DID 1238)" that read as if the outside temperature
+       came from datapoint 1238 (discussion #23). */
+    kv("Aktoren und Sensoren (laut DID 1238)", p.actors.map((d) => ACTOR_DE[d] || didNames[d] || `DID ${d}`).join(", "));
   }
   kv("Seriennummern", [p.serialIndoor, p.serialOutdoor].filter(Boolean).join(" / ") || "–");
   const raw = Object.entries(p.matrix).filter(([, v]) => typeof v === "string").map(([k, v]) => `${k}: ${v}`);
