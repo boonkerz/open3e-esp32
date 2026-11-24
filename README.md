@@ -39,6 +39,7 @@ Navigation und Suche, unter <https://esp32can.thomas-peterson.de/doku/>.
 **Betrieb**
 
 - [Anlage](docs/anlage.md): Kältekreis, Kessel, Stromspeicher und Photovoltaik als Bild
+- [Bekannte Anlagen](docs/anlagen.md): an welchen Modellen das bisher läuft, mit Beispielbildern
 - [MQTT](docs/mqtt.md): Topics, Kommandos, Home Assistant
 - [Schreiben auf den Bus](docs/schreiben.md)
 - [Sichern und wiederherstellen](docs/sichern.md),

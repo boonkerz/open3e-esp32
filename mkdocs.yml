@@ -68,6 +68,7 @@ nav:
       - Bus-Scan: bus-scan.md
   - Betrieb:
       - Anlage: anlage.md
+      - Bekannte Anlagen: anlagen.md
       - MQTT: mqtt.md
       - Schreiben auf den Bus: schreiben.md
       - Sichern und wiederherstellen: sichern.md

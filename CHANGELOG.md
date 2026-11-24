@@ -36,6 +36,19 @@ bis dahin auf der Flash-Seite lag.
   Übersicht mit Verweisen geschrumpft, Links auf ihre alten Abschnitte
   führen deshalb nur noch auf diese Übersicht. Die Flash-Seite verlinkt
   die Dokumentation.
+- **Reiter „Anlage": Beschriftungen im Wärmepumpenschema überlappen nicht
+  mehr.** Mit Warmwasserspeicher, Heizstab und Puffer nebeneinander lag
+  „Rücklauf" unter dem Pufferwert, „Warmwasser" und „Puffer" standen auf der
+  Vorlaufleitung, und der Wert des Vierwegeventils stieß an
+  „Umschaltventil". Pumpe und Rücklauffühler sind jetzt über der Leitung
+  beschriftet, die Speicher über dem Symbol, die Zirkulationspumpe rechts
+  davon; das Bild ist dafür etwas breiter. Wer die Karte in Home Assistant
+  nutzt, erzeugt sie einmal neu, damit Bild und Positionen der Werte wieder
+  zusammenpassen.
+- **Doku: Seite „Bekannte Anlagen".** Eine Übersicht der Anlagen, an denen
+  der Reiter „Anlage" bisher gelaufen ist, mit Beispielbildern aus
+  eingereichten Daten, den bekannten Schwächen je Modell und der Anleitung,
+  wie man die eigene Anlage meldet.
 - **Reiter „Anlage": Verdichter, Pumpe und Umschaltventil zuerst.** Der
   Reiter liest einen Datenpunkt je Sekunde; das Umschaltventil stand am
   Ende der Liste und zeigte nach dem Öffnen gut 20 Sekunden lang nur

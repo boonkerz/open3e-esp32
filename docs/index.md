@@ -32,7 +32,8 @@ mit Fotos aus einer Unterverteilung, unter
 was verbaut ist, und zeichnet es mit Live-Werten: den Kältekreis einer
 Wärmepumpe, den Kessel eines Gas-Brennwertgeräts, Stromspeicher und
 Photovoltaik eines Vitocharge. Kältekreis und Kessel gibt es auch als Karte
-für Home Assistant.
+für Home Assistant. An welchen Modellen das bisher läuft, zeigt
+[Bekannte Anlagen](anlagen.md).
 
 ![Reiter Anlage: Kältekreis und Hydraulik einer Vitocal](img/anlage.png)
 

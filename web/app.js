@@ -3130,7 +3130,7 @@ function buildBoilerSvg(p) {
 
 function buildPlantSvg(p) {
   if (p.boiler) return buildBoilerSvg(p);
-  const svg = sv("svg", { viewBox: "0 0 1000 420", role: "img", "aria-label": "Anlagenschema" });
+  const svg = sv("svg", { viewBox: "0 0 1050 420", role: "img", "aria-label": "Anlagenschema" });
   const g = (part, ...kids) => { const n = sv("g", { "data-part": part }, ...kids); svg.append(n); return n; };
   const V = (id, x, y, anchor = "middle") => { const t = svText(x, y, "–", "val", anchor); t.id = `pv-${id}`; return t; };
   const L = (x, y, text, anchor = "middle") => svText(x, y, text, "lbl", anchor);
@@ -3153,7 +3153,7 @@ function buildPlantSvg(p) {
   g("fan2", svFan(110, 300), V("fan2", 110, 332));
   g("evap", svHx(170, 140, 50, 140), svSensor(195, 300, false), V("evap", 230, 304, "start"), L(195, 130, "Verdampfer"));
   g("eev", svValve(330, 100), V("eev", 330, 82), L(330, 124, "Expansionsventil"));
-  g("fourway", svFourWay(620, 315), V("fourway", 642, 312, "start"), L(642, 326, "Vierwegeventil", "start"));
+  g("fourway", svFourWay(620, 315), V("fourway", 642, 328, "start"), L(642, 342, "Vierwegeventil", "start"));
   g("comp", svCompressor(450, 350), L(450, 316, "Verdichter"), V("comp", 450, 394));
   g("comprps", V("comprps", 450, 410));
   g("oil", L(500, 304, "Öl", "start"), V("oil", 500, 318, "start"));
@@ -3163,33 +3163,35 @@ function buildPlantSvg(p) {
   g("heatkw", V("heatkw", 585, 215, "end"), L(585, 229, "Wärme", "end"));
   g("elw", V("elw", 585, 250, "end"), L(585, 264, "elektrisch", "end"));
 
-  g("pump", svPump(690, 160, 180), V("pump", 690, 140), L(690, 190, "Pumpe"));
+  /* Whatever sits on the return line is labelled above it: the room between
+     the two water lines belongs to the tanks and the heater. */
+  g("pump", svPump(690, 160, 180), L(690, 124, "Pumpe"), V("pump", 690, 142));
   g("water",
-    svSensor(900, 160, false), V("ret", 900, 140), L(900, 190, "Rücklauf"),
+    svSensor(925, 160, false), L(925, 124, "Rücklauf"), V("ret", 925, 142),
     svSensor(910, 260, false), V("flow", 910, 290), L(910, 304, "Vorlauf"));
   g("divert", svValve(680, 260), V("divert", 680, 290), L(680, 304, "Umschaltventil"));
-  g("circ", svPump(960, 210, -90), V("circ", 938, 214, "end"), L(938, 228, "Zirkulation", "end"));
+  g("circ", svPump(960, 210, -90), V("circ", 980, 207, "start"), L(980, 221, "Zirkulation", "start"));
   g("press", svSensor(785, 260, true), V("press", 785, 290), L(785, 304, "Druck"));
   g("massflow", svSensor(848, 260, true), V("massflow", 848, 290), L(848, 304, "Durchfluss"));
   /* The diverter valve's second way: flow up into the tank's coil and back
      out to the return line, so the picture shows where the one pump's water
      goes when hot water is being made. */
   g("dhw",
-    svPipe("M680,250 V213 H718", "flow"),
-    svPipe("M756,213 H770 V162", "ret"),
-    svTank(720, 185, 34, 56), V("dhw", 737, 180), L(737, 255, "Warmwasser"));
-  g("heater", svHeater(800, 205), V("heater", 800, 180), L(800, 240, "Heizstab"));
-  g("buffer", svTank(850, 185, 34, 56), V("buf", 867, 180), L(867, 255, "Puffer"));
+    svPipe("M680,250 V221 H718", "flow"),
+    svPipe("M756,221 H782 V162", "ret"),
+    svTank(720, 196, 34, 50), L(737, 176, "Warmwasser"), V("dhw", 737, 190));
+  g("heater", svHeater(820, 218), L(820, 176, "Heizstab"), V("heater", 820, 190));
+  g("buffer", svTank(864, 196, 34, 50), L(881, 176, "Puffer"), V("buf", 881, 190));
   /* heating circuits as a row of boxes below the flow line */
   [1, 2, 3, 4].forEach((n, i) => {
     const x = 700 + i * 84;
     const c = p.circuits.find((k) => k.n === n);
     const full = c && c.name ? c.name : `Heizkreis ${n}`;
     const label = full.length > 13 ? full.slice(0, 12) + "…" : full;
-    const lbl = L(x, 353, label);
+    const lbl = L(x, 373, label);
     if (label.length > 10) lbl.style.fontSize = "10px";
-    g(`hk${n}`, sv("rect", { class: "sym", x: x - 40, y: 338, width: 80, height: 40, rx: 4, fill: "#0b1020" }),
-      lbl, V(`hk${n}`, x, 371));
+    g(`hk${n}`, sv("rect", { class: "sym", x: x - 40, y: 358, width: 80, height: 40, rx: 4, fill: "#0b1020" }),
+      lbl, V(`hk${n}`, x, 391));
   });
   return svg;
 }
@@ -3778,7 +3780,7 @@ function plantBackgroundSvg(p) {
     if (!parts[n.dataset.part]) n.remove();
   }
   for (const t of svg.querySelectorAll("text.val")) t.remove();
-  svg.prepend(sv("rect", { width: 1000, height: 420, fill: "#0b1020" }));
+  svg.prepend(sv("rect", { width: "100%", height: "100%", fill: "#0b1020" }));
   const style = sv("style", {});
   style.textContent =
     "text{font:13px Arial,Helvetica,sans-serif;fill:#e6edf3}text.lbl{font-size:11px;fill:#9198a1}"
@@ -3803,7 +3805,7 @@ function plantLiveTemplate(p) {
   for (const t of svg.querySelectorAll("text.val")) {
     t.textContent = `{{${t.id.replace(/^pv-/, "")}}}`;
   }
-  svg.prepend(sv("rect", { width: 1000, height: 420, fill: "#0b1020" }));
+  svg.prepend(sv("rect", { width: "100%", height: "100%", fill: "#0b1020" }));
   const style = sv("style", {});
   style.textContent =
     "text{font:13px Arial,Helvetica,sans-serif;fill:#e6edf3}text.val{font-weight:600}"
@@ -3860,8 +3862,10 @@ async function plantHaCard(btn) {
       const t = svg.querySelector(`#pv-${s.id}`);
       if (!t) continue;
       const anchor = t.getAttribute("text-anchor");
-      let left = Number(t.getAttribute("x")) / 10;
-      const top = Number(t.getAttribute("y")) / 4.2 - 1.2;
+      /* percentages of the picture, whatever its viewBox */
+      const [, , vbW, vbH] = svg.getAttribute("viewBox").split(/\s+/).map(Number);
+      let left = Number(t.getAttribute("x")) * 100 / vbW;
+      const top = Number(t.getAttribute("y")) * 100 / vbH - 1.2;
       if (anchor === "start") left += 3;
       if (anchor === "end") left -= 3;
       lines.push(`  - type: state-label`,

@@ -115,6 +115,8 @@ Einträgen: einmal `01 03 03`, einmal `04 03 00 09 00 09 00 09`), die Anlage
 mit Puffer zusätzlich `02 00 01 07` am Anfang. Zum Festnageln fehlen weitere
 Konfigurationen, etwa 250-A ohne Puffer mit zwei Kreisen oder eine Vitodens.
 Das Profil zeigt beide roh. Wer eine anders konfigurierte Anlage hat
-(Puffer, mehrere Heizkreise, Kühlung, Monoblock): eine Sicherung mit Scan und
-Sondierung als Issue hilft, die Matrix über mehrere Anlagen zu vergleichen und
-die Modelltabelle (Herstellnummer → Modell) zu füllen.
+(Puffer, mehrere Heizkreise, Kühlung, Monoblock): Scan und Sondierung helfen,
+die Matrix über mehrere Anlagen zu vergleichen und die Modelltabelle
+(Herstellnummer → Modell) zu füllen. Welche zwei Dateien das sind und was vor
+dem Hochladen zu beachten ist, steht unter
+[Bekannte Anlagen](anlagen.md#meine-anlage-fehlt).
