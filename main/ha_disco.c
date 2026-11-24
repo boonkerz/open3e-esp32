@@ -838,6 +838,7 @@ void ha_disco_counts(int *sensors, int *controls)
 static bool s_plant_comp = true;
 static bool s_plant_pump = true;
 static int  s_plant_valve = -1;   /* boiler: 0 heating, 2 hot water */
+static int  s_plant_burner = -1;  /* boiler: 0 off, 1 burning, -1 unknown */
 
 /* Idle circuits stand still: a style rule appended inside the document
  * overrides the animation the web interface put there. Takes ownership of
@@ -846,20 +847,21 @@ static int  s_plant_valve = -1;   /* boiler: 0 heating, 2 hot water */
 static char *plant_styled(char *svg)
 {
     bool one_way = s_plant_valve == 0 || s_plant_valve == 2;
-    if (s_plant_comp && s_plant_pump && !one_way) {
+    if (s_plant_comp && s_plant_pump && !one_way && s_plant_burner != 0) {
         return svg;
     }
     char *end = strstr(svg, "</svg>");
     if (!end) {
         return svg;
     }
-    char rule[128];
-    snprintf(rule, sizeof(rule), "<style>%s%s</style>",
+    char rule[160];
+    snprintf(rule, sizeof(rule), "<style>%s%s%s</style>",
              (!s_plant_comp && !s_plant_pump) ? ".pipe{animation:none}"
              : !s_plant_comp ? ".hi,.lo{animation:none}"
              : !s_plant_pump ? ".flow,.ret{animation:none}" : "",
              s_plant_valve == 0 ? ".leg-dhw{animation:none}"
-             : s_plant_valve == 2 ? ".leg-hk{animation:none}" : "");
+             : s_plant_valve == 2 ? ".leg-hk{animation:none}" : "",
+             s_plant_burner == 0 ? ".flame{stroke:#6b7280}" : "");
     size_t head = (size_t)(end - svg);
     char *with = malloc(strlen(svg) + strlen(rule) + 1);
     if (!with) {
@@ -998,6 +1000,15 @@ void ha_disco_plant_valve(int position)
         return;
     }
     s_plant_valve = position;
+    ha_disco_plant_image(false);
+}
+
+void ha_disco_plant_burner(int burning)
+{
+    if (burning == s_plant_burner) {
+        return;
+    }
+    s_plant_burner = burning;
     ha_disco_plant_image(false);
 }
 

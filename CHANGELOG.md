@@ -36,6 +36,23 @@ bis dahin auf der Flash-Seite lag.
   Übersicht mit Verweisen geschrumpft, Links auf ihre alten Abschnitte
   führen deshalb nur noch auf diese Übersicht. Die Flash-Seite verlinkt
   die Dokumentation.
+- **Reiter „Anlage": kein Durchfluss und kein Rücklauf, wo der Sensor
+  fehlt.** DID 1043 steht im Scan jeder Vitodens. Eine 200-W ohne
+  Durchflussmesser antwortet darauf mit Nullen und dem Status 4, das Bild
+  zeigte trotzdem beide Fühler, in Home Assistant mit Warnzeichen
+  (Diskussion #22). Die Sondierung liest 1043 jetzt mit und lässt beide
+  weg; dafür einmal *Anlage erkennen* drücken. Belegt ist der Status mit je
+  einem Gerät mit und ohne Sensor.
+- **Reiter „Anlage": die Flamme ist grau, solange der Brenner aus ist.** Im
+  Reiter und im Bild für Home Assistant, das das Gateway bei einem Wechsel
+  neu veröffentlicht; maßgeblich ist die Modulation (DID 526). Für Home
+  Assistant einmal *Karte erzeugen*, damit das gespeicherte Bild die Flamme
+  kennt.
+- **Karte für Home Assistant: Einheit auch dort, wo die Datenbank keine
+  hat.** Die Pumpe stand als „60.0" in der Karte, weil das Feld `Actual`
+  von DID 381 ohne Einheit geführt wird; die Karte hängt sie jetzt an.
+  Nachkommastellen und der Text des Umschaltventils („0" statt „Heizen")
+  kommen weiterhin so an, wie Home Assistant den Sensor führt.
 - **Reiter „Anlage": Beschriftungen im Wärmepumpenschema überlappen nicht
   mehr.** Mit Warmwasserspeicher, Heizstab und Puffer nebeneinander lag
   „Rücklauf" unter dem Pufferwert, „Warmwasser" und „Puffer" standen auf der

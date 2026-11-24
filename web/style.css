@@ -126,6 +126,8 @@ section.active { display: block; }
 .plant text.val { font-weight: 600; font-variant-numeric: tabular-nums; }
 .plant text.lbl { font-size: 11px; fill: #9198a1; }
 .plant .sym { fill: none; stroke: #e6edf3; stroke-width: 2; }
+.plant .flame { stroke: #f97316; }
+.plant .flame.out { stroke: #6b7280; }
 .plant .pipe { fill: none; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
 .plant .hi { stroke: #f97316; }
 .plant .lo { stroke: #38bdf8; }

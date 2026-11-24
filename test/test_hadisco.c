@@ -501,6 +501,22 @@ int main(int argc, char **argv)
     ok("there is no ninth circuit", !ha_disco_curve_image(9, NULL, "<svg/>")
        && find("open3e-vent/curve/9") == NULL, NULL);
 
+    /* --- a boiler's flame goes grey in the picture while the burner is off --- */
+    reset("<svg><path class=\"sym flame\"/></svg>", "open3e-vent/cmnd", "flat");
+    ha_disco_plant_burner(0);
+    m = find("open3e-vent/plant/svg");
+    ok("burner off restyles the flame",
+       m && strstr(m->payload, ".flame{stroke:#6b7280}") != NULL
+         && strstr(m->payload, "</style></svg>") != NULL, m ? m->payload : "(none)");
+    reset("<svg><path class=\"sym flame\"/></svg>", "open3e-vent/cmnd", "flat");
+    ha_disco_plant_burner(0);
+    ok("an unchanged burner state publishes nothing", find("open3e-vent/plant/svg") == NULL, NULL);
+    ha_disco_plant_burner(1);
+    m = find("open3e-vent/plant/svg");
+    ok("burner on leaves the picture as stored",
+       m && strstr(m->payload, "#6b7280") == NULL, m ? m->payload : "(none)");
+    ha_disco_plant_burner(-1);
+
     /* --- the contact inputs --- */
     snprintf(points, sizeof(points), POINTS_533, "flat");
     reset(points, "open3e-vent/cmnd", "flat");

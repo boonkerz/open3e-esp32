@@ -34,6 +34,10 @@ void ha_disco_plant_state(bool compressor_running, bool pump_running);
  * in between. Only the way in use moves in the picture. */
 void ha_disco_plant_valve(int position);
 
+/* Boiler: whether the burner is on (1), off (0) or unknown (-1). The flame
+ * in the published picture goes grey while it is off. */
+void ha_disco_plant_burner(int burning);
+
 /* The picture with the values already in it, rendered by plant_image.c:
  * retained on <base>/plant/live and announced as a second image entity.
  * For dashboards that cannot overlay sensors on a background, Grafana among

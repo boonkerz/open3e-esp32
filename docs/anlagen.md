@@ -18,7 +18,7 @@ stehen. Die Liste betrifft nur die Erkennung und das Bild.
 | Vitodens 300-W (B3HG) | Gas-Brennwert | Kessel und Hydraulik | aus eingereichten Daten |
 | Vitodens 333-F | Gas-Brennwert mit Speicher | Kessel und Hydraulik | am Gerät bestätigt, Umschaltventil in beiden Stellungen |
 | Vitodens 343-F mit Solarthermie | Gas-Brennwert mit Solarspeicher | Kessel, Hydraulik und Solarkreis | am Gerät bestätigt, kein Beispielbild |
-| Vitodens 200-W | Gas-Brennwert | Kessel und Hydraulik | läuft, zeigt aber Fühler, die es dort nicht gibt (siehe unten) |
+| Vitodens 200-W | Gas-Brennwert | Kessel und Hydraulik | aus eingereichten Daten, vom Besitzer in Betrieb |
 | Vitocharge VX3 | Stromspeicher mit Wechselrichter | Photovoltaik und Batterie | läuft dauerhaft, Anlage des Autors |
 | Vitovent | Lüftung | keines | nur Datenpunkte |
 
@@ -69,9 +69,14 @@ bestätigt; ein Beispielbild fehlt, weil keine Dateien dieser Anlage vorliegen.
 
 ### Vitodens 200-W
 
-Der Kessel wird erkannt und gezeichnet. Laut Besitzer hat das Gerät weder
-Rücklauffühler noch Durchflussmesser; das Bild zeigt beide trotzdem, in Home
-Assistant mit Warnzeichen. Die Dateien dieser Anlage sind angefragt.
+![Schema einer Vitodens 200-W](img/anlagen/vitodens-200-w.png)
+
+Das Gerät hat weder Durchflussmesser noch Rücklauffühler. Der Datenpunkt
+dafür (1043) steht trotzdem im Scan und meldet Nullen mit dem Status 4; der
+Reiter lässt beide dann weg. Nach einem Update dafür einmal *Anlage erkennen*
+drücken. Das Bild ist aus den Dateien des Besitzers aus
+[Diskussion 22](https://github.com/boonkerz/open3e-esp32/discussions/22)
+erzeugt, die Brennerwerte stammen aus seinem Bildschirmfoto.
 
 ## Stromspeicher und Photovoltaik
 

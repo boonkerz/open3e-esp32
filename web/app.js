@@ -2687,7 +2687,7 @@ const PLANT_PROBE = [
   /* indoor: hydraulics, tanks, circuits, electric heater, identification */
   ...[274, 268, 269, 271, 3232, 3233, 3234, 277, 278, 279, 281, 3016, 3017, 3018,
       284, 286, 288, 290, 1415, 1416, 1417, 1418, 933, 934, 935, 936, 627, 628, 629, 630,
-      318, 376, 273, 275, 381, 386, 491, 1044,
+      318, 376, 1043, 273, 275, 381, 386, 491, 1044,
       2574, 2340, 2352, 2487, 2342, 2611, 2498, 2850, 2486, 2494,
       952, 1549, 1238, 1660, 377].map((did) => ({ role: "indoor", did })),
   /* outdoor: refrigerant circuit */
@@ -2781,6 +2781,16 @@ function derivePlant() {
     }
   }
 
+  /* DID 1043 is in the scan of every Vitodens, sensor or not. A 200-W
+     without one answers {Actual: 0, Temperature: 0, Unknown: "04"} with the
+     pump running, a 333-F with one "00" in the last byte: the same 4 that
+     SensorStatus uses for "not available" (M12-art12, discussion #22). A
+     probe from before 1043 was read says nothing, and the sensor stays. */
+  const allengra = plantVal("indoor", 1043);
+  const allengraMissing = !!allengra && typeof allengra === "object"
+    && allengra.Actual === 0 && allengra.Temperature === 0
+    && parseInt(allengra.Unknown, 16) === 4;
+
   const circuits = [];
   for (let i = 0; i < 4; i++) {
     const flowDid = 284 + 2 * i;
@@ -2837,8 +2847,10 @@ function derivePlant() {
     /* A heat pump reports its flow on 376. A gas boiler has no such
        datapoint and measures with the Allengra sensor on 1043 instead
        (Vitodens 333-F, discussion #23). */
-    flowSensor: fitted("indoor", 376) || (!has("indoor", 376) && has("indoor", 1043)),
+    flowSensor: fitted("indoor", 376) || (!has("indoor", 376) && has("indoor", 1043) && !allengraMissing),
     flowDid: has("indoor", 376) ? 376 : 1043,
+    /* A boiler's return temperature comes from the same sensor. */
+    returnSensor: has("indoor", 376) || !allengraMissing,
     modulation: has("indoor", 526),
     /* A burner instead of a compressor: no outdoor unit, and the master
        knows modulation, flue gas or flame statistics. */
@@ -2979,7 +2991,7 @@ function svRadiator(x, y) {
     sv("path", { d: fins }));
 }
 function svFlame(x, y) {
-  return sv("path", { class: "sym", style: "stroke:#f97316",
+  return sv("path", { class: "sym flame",
     d: `M${x},${y - 34} c 14,14 22,24 22,38 a 22,22 0 0 1 -44,0 c 0,-10 6,-16 10,-24 c 2,8 6,10 8,10 c 2,-8 0,-16 4,-24 Z` });
 }
 function svCompressor(x, y) {
@@ -3011,8 +3023,8 @@ function plantSlots(p) {
   add("elw", "indoor", 2486, { unit: "W", d: 0, part: "elw" });
   /* A boiler has no return sensor of its own; the flow meter measures the
      temperature of the water passing through it, which is the return. */
-  if (p.boiler && p.flowDid === 1043) add("ret", "indoor", 1043, { f: "Temperature", unit: "°C", part: "water" });
-  else add("ret", "indoor", 269, { f: "Actual", unit: "°C", part: "water" });
+  if (p.boiler && p.flowDid === 1043) add("ret", "indoor", 1043, { f: "Temperature", unit: "°C", part: "bret" });
+  else add("ret", "indoor", 269, { f: "Actual", unit: "°C", part: p.boiler ? "bret" : "water" });
   add("mod", "indoor", 526, { unit: "%", d: 0, part: "bmod" });
   add("flue", "indoor", 331, { f: "Actual", unit: "°C", part: "flue" });
   add("bfan", p.burnerFanRole, p.burnerFanDid || 373, { unit: "rpm", d: 0, part: "bfan" });
@@ -3051,7 +3063,7 @@ function plantParts(p) {
     fan1: p.fans >= 1, fan2: p.fans >= 2, evap: p.evaporator, eev: p.eev > 0,
     fourway: p.fourWay, comp: !p.boiler, comprps: p.compressorRps, suction: p.suction,
     discharge: p.discharge, oil: p.oil, heatkw: p.heatPower, elw: p.elPower,
-    water: true, pump: p.pump, press: p.pressure, massflow: p.flowSensor,
+    water: true, bret: p.boiler && p.returnSensor, pump: p.pump, press: p.pressure, massflow: p.flowSensor,
     dhw: p.dhw, heater: p.heater, buffer: p.buffer.length > 0,
     circ: p.circulation, divert: !!p.diverter,
     hk1: p.circuits.some((c) => c.n === 1), hk2: p.circuits.some((c) => c.n === 2),
@@ -3097,9 +3109,8 @@ function buildBoilerSvg(p) {
 
   /* return, in the direction of flow: pump, return sensor, flow meter */
   g("pump", svPump(650, 130, 180), V("pump", 650, 110), L(650, 160, "Pumpe"));
-  g("water",
-    svSensor(570, 130, false), V("ret", 570, 110), L(570, 160, "Rücklauf"),
-    svSensor(490, 280, false), V("flow", 490, 310), L(490, 324, "Vorlauf"));
+  g("bret", svSensor(570, 130, false), V("ret", 570, 110), L(570, 160, "Rücklauf"));
+  g("water", svSensor(490, 280, false), V("flow", 490, 310), L(490, 324, "Vorlauf"));
   g("massflow", svSensor(495, 130, true), V("massflow", 495, 110), L(495, 160, "Durchfluss"));
   g("press", svSensor(560, 280, true), V("press", 560, 310), L(560, 324, "Druck"));
   g("divert", svValve(650, 280), V("divert", 650, 310), L(650, 324, "Umschaltventil"));
@@ -3217,6 +3228,9 @@ function plantFlow() {
   };
   set(".pipe.hi, .pipe.lo", plantLiveNum.comp);
   set(".pipe.flow, .pipe.ret", plantLiveNum.pump);
+  /* The flame burns while the burner modulates; unknown leaves it lit. */
+  const flame = svg.querySelector(".flame");
+  if (flame && plantLiveNum.mod !== undefined) flame.classList.toggle("out", !(plantLiveNum.mod > 0));
   /* Boiler: 0 heating, 1 in between, 2 hot water. Unknown: both move. */
   const pos = plantLiveNum.divert;
   if (pos === 0 || pos === 2) {
@@ -3711,7 +3725,7 @@ async function plantLiveLoop() {
           const r = await api(`/api/read?ecu=${plantProfile.roles[s.role].addr}&did=${s.did}`);
           plantLive[s.id] = plantFormat(s, r.value);
           if (t) { t.textContent = plantLive[s.id]; t.classList.remove("stale"); }
-          if (s.id === "comp" || s.id === "pump" || s.id === "divert") {
+          if (s.id === "comp" || s.id === "pump" || s.id === "divert" || s.id === "mod") {
             plantLiveNum[s.id] = plantNumber(s, r.value);
             plantFlow();
           }
@@ -3737,6 +3751,18 @@ function plantHaEntity(slot) {
   const base = ($("mq-base") && $("mq-base").value) || "open3e";
   const name = `${didNames[slot.did] || "did" + slot.did}${slot.f ? " " + slot.f : ""}`;
   return `sensor.${slug(base)}_${slug(name)}`;
+}
+
+/* Whether discovery announces this slot's sensor with a unit: it takes the
+   unit from the database entry of the field the slot shows. Unknown counts
+   as "has one", so a failed lookup cannot put a second unit on the card. */
+async function plantHaHasUnit(slot) {
+  try {
+    const d = await api(`/api/datapoint?did=${slot.did}`);
+    const subs = d.args && d.args.subTypes;
+    const leaf = Array.isArray(subs) ? subs.find((t) => t.id === (slot.f || "Actual")) : d;
+    return !leaf || !!(leaf.args && leaf.args.unit);
+  } catch { return true; }
 }
 
 /* Every datapoint the picture uses goes into the selection with the HA flag,
@@ -3787,7 +3813,8 @@ function plantBackgroundSvg(p) {
     + ".sym{fill:none;stroke:#e6edf3;stroke-width:2}"
     + ".pipe{fill:none;stroke-width:4;stroke-linecap:round;stroke-linejoin:round;"
     + "stroke-dasharray:12 10;animation:f 1.2s linear infinite}@keyframes f{to{stroke-dashoffset:-22}}"
-    + ".hi{stroke:#f97316}.lo{stroke:#38bdf8}.flow{stroke:#ef4444}.ret{stroke:#60a5fa}";
+    + ".hi{stroke:#f97316}.lo{stroke:#38bdf8}.flow{stroke:#ef4444}.ret{stroke:#60a5fa}"
+    + ".flame{stroke:#f97316}";
   svg.prepend(style);
   return new XMLSerializer().serializeToString(svg);
 }
@@ -3812,7 +3839,8 @@ function plantLiveTemplate(p) {
     + "text.lbl{font-size:11px;fill:#9198a1}.sym{fill:none;stroke:#e6edf3;stroke-width:2}"
     + ".pipe{fill:none;stroke-width:4;stroke-linecap:round;stroke-linejoin:round;"
     + "stroke-dasharray:12 10;animation:f 1.2s linear infinite}@keyframes f{to{stroke-dashoffset:-22}}"
-    + ".hi{stroke:#f97316}.lo{stroke:#38bdf8}.flow{stroke:#ef4444}.ret{stroke:#60a5fa}";
+    + ".hi{stroke:#f97316}.lo{stroke:#38bdf8}.flow{stroke:#ef4444}.ret{stroke:#60a5fa}"
+    + ".flame{stroke:#f97316}";
   svg.prepend(style);
   return new XMLSerializer().serializeToString(svg);
 }
@@ -3869,7 +3897,10 @@ async function plantHaCard(btn) {
       if (anchor === "start") left += 3;
       if (anchor === "end") left -= 3;
       lines.push(`  - type: state-label`,
-                 `    entity: ${plantHaEntity(s)}`,
+                 `    entity: ${plantHaEntity(s)}`);
+      /* Home Assistant appends a unit only where the database has one. */
+      if (s.unit && !(await plantHaHasUnit(s))) lines.push(`    suffix: " ${s.unit}"`);
+      lines.push(
                  `    style:`,
                  `      top: ${top.toFixed(1)}%`,
                  `      left: ${left.toFixed(1)}%`,
