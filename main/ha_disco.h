@@ -21,6 +21,10 @@ void ha_disco_clear_all(void);
  * datapoint, so the two are worth reporting apart. */
 void ha_disco_counts(int *sensors, int *controls);
 
+/* Read the stored record of what has been announced again on next use. For
+ * tests, which swap it underneath the module. */
+void ha_disco_ledger_reload(void);
+
 /* The plant schematic as an image entity: the SVG the web interface stored
  * goes out retained on <base>/plant/svg, and discovery announces it, so a
  * picture-elements card can use image_entity and Home Assistant serves the

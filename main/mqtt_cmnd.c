@@ -812,7 +812,13 @@ void mqtt_cmnd_dispatch(const char *topic, int topic_len,
         strncmp(cfg.cmnd_topic, topic, (size_t)topic_len) != 0) {
         return;
     }
-    if (data_len <= 0 || data_len >= CMND_MAX_PAYLOAD) {
+    /* An empty message is nobody's command: it is how a retained message is
+     * deleted, and what ioBroker sends when its tree is tidied up. Answering
+     * it with an error only leaves a puzzling ERR behind (discussion #23). */
+    if (data_len <= 0) {
+        return;
+    }
+    if (data_len >= CMND_MAX_PAYLOAD) {
         reply_error("command payload must be 1..%d bytes", CMND_MAX_PAYLOAD - 1);
         return;
     }

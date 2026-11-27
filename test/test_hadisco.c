@@ -69,6 +69,27 @@ void mqtt_pub_topic(char *out, size_t out_sz, uint16_t ecu, uint16_t did,
 
 char *app_config_read_file(const char *path) { (void)path; return strdup(g_points); }
 
+/* The record of what was announced: absent until a test stores one, the
+ * state of a gateway updated from a firmware without it. */
+static uint8_t g_ledger[256];
+static size_t g_ledger_len;
+static int g_ledger_writes;
+bool app_config_ha_ledger_get(uint8_t *out, size_t len)
+{
+    if (g_ledger_len != len) {
+        return false;
+    }
+    memcpy(out, g_ledger, len);
+    return true;
+}
+bool app_config_ha_ledger_set(const uint8_t *in, size_t len)
+{
+    memcpy(g_ledger, in, len);
+    g_ledger_len = len;
+    g_ledger_writes++;
+    return true;
+}
+
 /* The selection helpers live in app_config.c next to NVS and LittleFS; only
  * these few lines of them matter here. */
 bool sel_is_datapoint(const struct cJSON *e)
@@ -500,6 +521,45 @@ int main(int argc, char **argv)
     reset("[]", "open3e-vent/cmnd", "flat");
     ok("there is no ninth circuit", !ha_disco_curve_image(9, NULL, "<svg/>")
        && find("open3e-vent/curve/9") == NULL, NULL);
+
+    /* --- only what was announced is taken back --- */
+    {
+        /* A fresh gateway: a ledger exists and is empty. */
+        static const uint8_t none[128];
+        app_config_ha_ledger_set(none, sizeof(none));
+        ha_disco_ledger_reload();
+        reset("[]", "open3e-vent/cmnd", "flat");
+        ha_disco_clear_all();
+        ok("nothing announced, nothing taken back", g_n == 0,
+           g_n ? g_msgs[0].topic : NULL);
+
+        snprintf(points, sizeof(points), POINTS_533, "flat");
+        reset(points, "open3e-vent/cmnd", "flat");
+        ha_disco_publish_all();
+        size_t announced = 0, empties = 0;
+        for (size_t i = 0; i < g_n; i++) {
+            if (g_msgs[i].payload[0]) announced++; else empties++;
+        }
+        ok("announcing sends no retraction for what never existed",
+           announced > 0 && empties == 0, NULL);
+
+        reset(points, "open3e-vent/cmnd", "flat");
+        ha_disco_clear_all();
+        size_t taken = 0, full = 0;
+        for (size_t i = 0; i < g_n; i++) {
+            if (g_msgs[i].payload[0]) full++; else taken++;
+        }
+        ok("a clear takes back at least what was announced",
+           full == 0 && taken >= announced, NULL);
+
+        reset(points, "open3e-vent/cmnd", "flat");
+        ha_disco_clear_all();
+        ok("and a second clear is silent", g_n == 0, g_n ? g_msgs[0].topic : NULL);
+
+        /* Back to "no ledger" for the tests that follow. */
+        g_ledger_len = 0;
+        ha_disco_ledger_reload();
+    }
 
     /* --- a boiler's flame goes grey in the picture while the burner is off --- */
     reset("<svg><path class=\"sym flame\"/></svg>", "open3e-vent/cmnd", "flat");

@@ -13,6 +13,18 @@ bis dahin auf der Flash-Seite lag.
 
 ### Behoben
 
+- **„homeassistant"-Zweig im Broker, ohne dass etwas angemeldet war.** Beim
+  Speichern der Auswahl, beim Abschalten von Discovery und bei jedem
+  Anmelden nahm das Gateway vorsorglich alles zurück, was es je bei Home
+  Assistant angemeldet haben könnte, mit leeren Nachrichten: Datenpunkte,
+  Netzladen, beide Kontakte, das Anlagenbild. ioBroker und MQTT Explorer
+  legen für jede einen Eintrag an (Diskussion #23). Das Gateway merkt sich
+  jetzt, was es angemeldet hat, und nimmt nur das zurück. Nach dem Update
+  räumt es beim ersten Speichern der Auswahl noch einmal alles auf.
+- **`ERR` nach einer leeren Nachricht auf dem Kommando-Topic.** Eine leere
+  Nachricht löscht beim Broker eine gespeicherte; ioBroker schickt sie
+  beim Aufräumen seines Baums. Das Gateway meldete darauf „command payload
+  must be 1..1023 bytes". Leere Nachrichten werden jetzt übergangen.
 - **Leere Nachrichten für Heizkennlinien nach jedem Start.** Um Bilder
   abgewählter Kennlinien beim Broker zu löschen, schickte das Gateway nach
   jedem Neustart leere Nachrichten für alle acht Heizkreise, auf

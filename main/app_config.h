@@ -165,6 +165,11 @@ bool wg_cfg_clear(void);
 void sys_cfg_get(sys_cfg_t *out);
 bool sys_cfg_set(const sys_cfg_t *in);
 
+/* ha_disco.c's record of the discovery topics it has announced, an opaque
+ * block. get returns false while there is none of that size. */
+bool app_config_ha_ledger_get(uint8_t *out, size_t len);
+bool app_config_ha_ledger_set(const uint8_t *in, size_t len);
+
 /* ------------------------------------------------------------------ */
 /* Selection file entries                                               */
 /*

@@ -20,6 +20,88 @@
 
 static const char *TAG = "ha";
 
+/* ------------------------------------------------------------------ */
+/* What has been announced                                              */
+/*
+ * Taking an entity back means publishing an empty retained message on its
+ * config topic. A broker deletes with that and nothing else happens -- but
+ * ioBroker and MQTT Explorer create an entry for every empty message, so a
+ * gateway that tidies up after entities it never announced fills their tree
+ * with a "homeassistant" branch (discussion #23).
+ *
+ * So the module remembers what it announced: one bit per topic, by hash. A
+ * retraction goes out only if the topic's bit is set. Two topics may share a
+ * bit; then one empty message too many is sent, never one too few. A full
+ * clear takes everything back and starts the ledger from zero.
+ *
+ * A gateway that has no ledger yet -- one updated from a firmware without
+ * it -- may have announced anything, so every bit counts as set until its
+ * first full clear.
+ */
+#define LEDGER_BYTES 128
+static uint8_t s_ledger[LEDGER_BYTES];
+static bool s_ledger_loaded;
+static bool s_ledger_dirty;
+
+static void ledger_load(void)
+{
+    if (s_ledger_loaded) {
+        return;
+    }
+    if (!app_config_ha_ledger_get(s_ledger, sizeof(s_ledger))) {
+        memset(s_ledger, 0xFF, sizeof(s_ledger));
+    }
+    s_ledger_loaded = true;
+    s_ledger_dirty = false;
+}
+
+static unsigned ledger_bit(const char *topic)
+{
+    uint32_t h = 2166136261u;
+    for (const unsigned char *c = (const unsigned char *)topic; *c; c++) {
+        h = (h ^ *c) * 16777619u;
+    }
+    return h % (LEDGER_BYTES * 8);
+}
+
+static void ledger_flush(void)
+{
+    if (s_ledger_loaded && s_ledger_dirty && app_config_ha_ledger_set(s_ledger, sizeof(s_ledger))) {
+        s_ledger_dirty = false;
+    }
+}
+
+static void ledger_restart(void)
+{
+    ledger_load();
+    memset(s_ledger, 0, sizeof(s_ledger));
+    s_ledger_dirty = true;
+    ledger_flush();
+}
+
+void ha_disco_ledger_reload(void)
+{
+    s_ledger_loaded = false;
+}
+
+/* A retained message of this module: an announcement is noted, a retraction
+ * (empty payload) only goes out for a topic that was announced. */
+static void pub_retained(const char *topic, const char *payload)
+{
+    ledger_load();
+    unsigned bit = ledger_bit(topic);
+    uint8_t mask = (uint8_t)(1u << (bit % 8));
+    if (payload[0]) {
+        if (!(s_ledger[bit / 8] & mask)) {
+            s_ledger[bit / 8] |= mask;
+            s_ledger_dirty = true;
+        }
+    } else if (!(s_ledger[bit / 8] & mask)) {
+        return;
+    }
+    mqtt_pub_raw(topic, payload, true);
+}
+
 static void ha_disco_grid(const mqtt_cfg_t *cfg, const char *dev_id, bool clear);
 static void ha_disco_contacts(const mqtt_cfg_t *cfg, const char *dev_id, bool clear);
 
@@ -211,7 +293,7 @@ static void publish_entity(const mqtt_cfg_t *cfg, const char *dev_id,
         /* An empty retained payload is how Home Assistant is told an entity is
          * gone. It has to target the exact same topic the entity was published
          * on, which is why removal walks the codec tree too. */
-        mqtt_pub_raw(topic, "", true);
+        pub_retained(topic, "");
         n_sensors++;
         return;
     }
@@ -267,7 +349,7 @@ static void publish_entity(const mqtt_cfg_t *cfg, const char *dev_id,
     o3e_buf_adds(&b, "}}");
 
     if (!b.oom && b.buf) {
-        mqtt_pub_raw(topic, b.buf, true);
+        pub_retained(topic, b.buf);
         n_sensors++;
     }
     o3e_buf_free(&b);
@@ -336,11 +418,11 @@ static void publish_control(const mqtt_cfg_t *cfg, const char *dev_id,
         char stale[352];
         snprintf(stale, sizeof(stale), "%s/%s/%s/%s_set/config", cfg->ha_prefix,
                  (component[0] == 's') ? "number" : "select", dev_id, object_id);
-        mqtt_pub_raw(stale, "", true);
+        pub_retained(stale, "");
     }
 
     if (clear) {
-        mqtt_pub_raw(topic, "", true);
+        pub_retained(topic, "");
         n_controls++;
         return;
     }
@@ -483,7 +565,7 @@ static void publish_control(const mqtt_cfg_t *cfg, const char *dev_id,
     o3e_buf_adds(&b, "]}}");
 
     if (!b.oom && b.buf) {
-        mqtt_pub_raw(topic, b.buf, true);
+        pub_retained(topic, b.buf);
         n_controls++;
     }
     o3e_buf_free(&b);
@@ -683,6 +765,13 @@ static void ha_disco_walk_selection(bool clear)
     /* Counted separately: "published for 19 datapoints" says nothing about
      * whether any of them became operable, and a control that never appears
      * looks exactly like a datapoint that is read-only. */
+    /* Everything is taken back now; what the next walk announces is new. */
+    if (clear) {
+        ledger_restart();
+    } else {
+        ledger_flush();
+    }
+
     ESP_LOGI(TAG, "discovery %s: %d datapoints, %d sensors, %d controls%s",
              clear ? "cleared" : "published", count, n_sensors, n_controls,
              (!clear && n_controls == 0 && !cfg.cmnd_topic[0])
@@ -715,7 +804,7 @@ static void publish_extra_entity(const mqtt_cfg_t *cfg, const char *dev_id,
     snprintf(topic, sizeof(topic), "%s/%s/%s/%s/config",
              cfg->ha_prefix, component, dev_id, object);
     if (clear) {
-        mqtt_pub_raw(topic, "", true);
+        pub_retained(topic, "");
         *(is_sensor ? &n_sensors : &n_controls) += 1;
         return;
     }
@@ -753,7 +842,7 @@ static void publish_extra_entity(const mqtt_cfg_t *cfg, const char *dev_id,
     o3e_buf_add_json_str(&b, dev_id);
     o3e_buf_adds(&b, "]}}");
     if (!b.oom && b.buf) {
-        mqtt_pub_raw(topic, b.buf, true);
+        pub_retained(topic, b.buf);
         *(is_sensor ? &n_sensors : &n_controls) += 1;
     }
     o3e_buf_free(&b);
@@ -883,7 +972,7 @@ static void plant_image_config(const mqtt_cfg_t *cfg, const char *dev_id,
     snprintf(conf, sizeof(conf), "%s/image/%s/%s/config", cfg->ha_prefix, dev_id, object);
     if (clear || !cfg->ha_discovery) {
         if (clear) {
-            mqtt_pub_raw(conf, "", true);
+            pub_retained(conf, "");
         }
         return;
     }
@@ -901,7 +990,7 @@ static void plant_image_config(const mqtt_cfg_t *cfg, const char *dev_id,
     o3e_buf_add_json_str(&b, dev_id);
     o3e_buf_adds(&b, "]}}");
     if (!b.oom && b.buf) {
-        mqtt_pub_raw(conf, b.buf, true);
+        pub_retained(conf, b.buf);
     }
     o3e_buf_free(&b);
 }
@@ -943,7 +1032,12 @@ bool ha_disco_curve_image(int circuit, const char *name, const char *svg)
     if (!svg) {
         mqtt_pub_raw(topic, "", true);
         mqtt_pub_raw(t64, "", true);
-        plant_image_config(&cfg, dev_id, object, "", topic, true);
+        /* Not through the ledger: plant_image.c keeps its own record of
+         * which curves are out, and a full clear in between would make the
+         * ledger forget this one. */
+        char conf[352];
+        snprintf(conf, sizeof(conf), "%s/image/%s/%s/config", cfg.ha_prefix, dev_id, object);
+        mqtt_pub_raw(conf, "", true);
         return true;
     }
     mqtt_pub_raw(topic, svg, true);
@@ -974,7 +1068,7 @@ void ha_disco_plant_live(const char *svg)
         return;
     }
     copy = plant_styled(copy);
-    mqtt_pub_raw(topic, copy, true);
+    pub_retained(topic, copy);
     /* The same picture Base64-coded on <base>/plant/live/b64: Grafana's image
      * panels take a data URL but not raw SVG text (lingej, #22). */
     char t64[CFG_TOPIC_MAX + 24];
@@ -982,6 +1076,7 @@ void ha_disco_plant_live(const char *svg)
     pub_base64(t64, copy);
     free(copy);
     plant_image_config(&cfg, dev_id, "plant_live", "Anlagenschema live", topic, false);
+    ledger_flush();
 }
 
 void ha_disco_plant_state(bool compressor_running, bool pump_running)
@@ -1032,18 +1127,18 @@ void ha_disco_plant_image(bool clear)
     bool have = svg && strncmp(svg, "<svg", 4) == 0;
     if (!have) {
         free(svg);
-        mqtt_pub_raw(topic, "", true);
-        mqtt_pub_raw(conf, "", true);
+        pub_retained(topic, "");
+        pub_retained(conf, "");
         /* The filled picture goes with it; plant_image.c renders a new one
          * within a minute if the template is still there. */
         char live[CFG_TOPIC_MAX + 16];
         snprintf(live, sizeof(live), "%s/plant/live", cfg.base_topic);
-        mqtt_pub_raw(live, "", true);
+        pub_retained(live, "");
         plant_image_config(&cfg, dev_id, "plant_live", "", live, true);
         return;
     }
     svg = plant_styled(svg);
-    mqtt_pub_raw(topic, svg, true);
+    pub_retained(topic, svg);
     free(svg);
     if (!cfg.ha_discovery) {
         return;
@@ -1060,9 +1155,10 @@ void ha_disco_plant_image(bool clear)
     o3e_buf_add_json_str(&b, dev_id);
     o3e_buf_adds(&b, "]}}");
     if (!b.oom && b.buf) {
-        mqtt_pub_raw(conf, b.buf, true);
+        pub_retained(conf, b.buf);
     }
     o3e_buf_free(&b);
+    ledger_flush();
 }
 
 void ha_disco_publish_all(void) { ha_disco_walk_selection(false); }
@@ -1100,12 +1196,12 @@ static void ha_disco_contacts(const mqtt_cfg_t *cfg, const char *dev_id, bool cl
         if (clear || !sys.contact[i].enabled || output) {
             snprintf(topic, sizeof(topic), "%s/binary_sensor/%s/%s/config",
                      cfg->ha_prefix, dev_id, object);
-            mqtt_pub_raw(topic, "", true);
+            pub_retained(topic, "");
         }
         if (clear || !sys.contact[i].enabled || !output) {
             snprintf(topic, sizeof(topic), "%s/switch/%s/%s/config",
                      cfg->ha_prefix, dev_id, object);
-            mqtt_pub_raw(topic, "", true);
+            pub_retained(topic, "");
         }
         if (clear || !sys.contact[i].enabled) {
             if (clear) {

@@ -630,3 +630,29 @@ bool app_config_write_file(const char *path, const char *data, size_t len)
     remove(path);
     return rename(tmp, path) == 0;
 }
+
+/* ------------------------------------------------------------------ */
+/* Home Assistant discovery: what has been announced                    */
+
+bool app_config_ha_ledger_get(uint8_t *out, size_t len)
+{
+    nvs_handle_t h;
+    if (nvs_open(NS, NVS_READONLY, &h) != ESP_OK) {
+        return false;
+    }
+    size_t got = len;
+    bool ok = nvs_get_blob(h, "ha_ledger", out, &got) == ESP_OK && got == len;
+    nvs_close(h);
+    return ok;
+}
+
+bool app_config_ha_ledger_set(const uint8_t *in, size_t len)
+{
+    nvs_handle_t h;
+    if (nvs_open(NS, NVS_READWRITE, &h) != ESP_OK) {
+        return false;
+    }
+    bool ok = nvs_set_blob(h, "ha_ledger", in, len) == ESP_OK && nvs_commit(h) == ESP_OK;
+    nvs_close(h);
+    return ok;
+}
